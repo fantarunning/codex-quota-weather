@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Codex Quota Panel</title>
+    <style>
+        /* The body is the transparent margin around the card. Its padding = PAD
+           in electron/main.js (22px @ scale 1), so any window-edge / DWM artifact
+           lands in this transparent zone and the rounded card shows no square
+           border. The body is also the drag handle (-webkit-app-region: drag). */
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent; }
+        body {
+            box-sizing: border-box; padding: 22px; display: flex; align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-app-region: drag;   /* whole window is draggable by default... */
+        }
+
+        /* Invisible resize grips sitting in the transparent PAD zone at the real
+           window edges. Frameless+transparent windows have no native resize
+           border on Windows, so we implement it: each grip is no-drag (so the
+           body drag doesn't swallow it), shows the right resize cursor, and on
+           mousedown tells main to follow the OS cursor (aspect-locked). */
+        .rz { position: fixed; z-index: 9999; -webkit-app-region: no-drag; }
+        .rz-n  { top: 0; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
+        .rz-s  { bottom: 0; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
+        .rz-e  { top: 10px; bottom: 10px; right: 0; width: 10px; cursor: ew-resize; }
+        .rz-w  { top: 10px; bottom: 10px; left: 0; width: 10px; cursor: ew-resize; }
+        .rz-ne { top: 0; right: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+        .rz-nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+        .rz-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+        .rz-sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+        /* ...except interactive controls, which opt out below. */
+
+        /* floating orb (minimized view) — a small draggable ball showing the % */
+        #orb {
+            position: fixed; top: 6px; left: 6px; right: 6px; bottom: 6px;
+            display: none; align-items: center; justify-content: center;
+            border-radius: 50%; cursor: grab; -webkit-app-region: no-drag;
+            background: radial-gradient(circle at 35% 30%, #2b6fd6, #0b3f8c);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5), inset 0 1px 3px rgba(255,255,255,0.4);
+            color: #fff; user-select: none; overflow: hidden;
+        }
+        #orb.show { display: flex; }
+        #orb:active { cursor: grabbing; }
+        #orb-pct { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
+        #orb-ring { position: absolute; inset: 0; }
+        /* when minimized, hide the card entirely */
+        body.mini #quota-app-container { display: none; }
+        body.mini .rz { display: none; }
+
+        #quota-app-container {
+            position: relative; width: 680px; height: 380px; border-radius: 24px; overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.3);
+            color: #fff; background: #000;
+            /* NOTE: no CSS transform here — a transform on any ancestor silently
+               disables -webkit-app-region drag in Electron. Intro uses opacity only. */
+            opacity: 0; animation: fadeAppIn 0.7s 0.1s ease forwards;
+        }
+
+        .bg-layer { position: absolute; inset: 0; background-size: cover; background-position: center; transition: opacity 0.45s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 0; filter: brightness(0.9); }
+        #bg-active { opacity: 1; }
+        #bg-next { opacity: 0; }
+        #quota-app-container[data-theme="blossom"] .bg-layer {
+            filter: brightness(0.64) saturate(0.82) contrast(1.08);
+        }
+        #quota-app-container[data-theme="blossom"] .overlay {
+            background:
+                radial-gradient(circle at 68% 42%, rgba(109, 47, 83, 0.08) 0%, rgba(18, 10, 28, 0.58) 76%),
+                linear-gradient(108deg, rgba(9, 8, 20, 0.82) 0%, rgba(48, 18, 43, 0.34) 52%, rgba(14, 9, 24, 0.68) 100%);
+        }
+        #quota-app-container[data-theme="snow"] .bg-layer {
+            filter: brightness(0.62) saturate(0.72) contrast(1.08);
+        }
+        #quota-app-container[data-theme="snow"] .overlay {
+            background:
+                radial-gradient(circle at 72% 45%, rgba(91, 125, 160, 0.06) 0%, rgba(8, 17, 31, 0.56) 76%),
+                linear-gradient(108deg, rgba(6, 13, 25, 0.84) 0%, rgba(20, 39, 58, 0.3) 54%, rgba(7, 16, 29, 0.66) 100%);
+        }
+        #quota-app-container[data-theme="beach"] .bg-layer {
+            filter: brightness(0.64) saturate(0.76) contrast(1.1);
+        }
+        #quota-app-container[data-theme="beach"] .overlay {
+            background:
+                radial-gradient(circle at 70% 44%, rgba(72, 139, 154, 0.05) 0%, rgba(7, 22, 31, 0.56) 78%),
+                linear-gradient(108deg, rgba(5, 17, 26, 0.86) 0%, rgba(16, 55, 66, 0.28) 54%, rgba(6, 20, 28, 0.66) 100%);
+        }
+
+        @keyframes fadeAppIn { to { opacity: 1; } }
+
+        .overlay { position: absolute; inset: 0; background: radial-gradient(circle at 75% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 100%), linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.05) 100%); z-index: 1; pointer-events: none; }
+
+        #weather-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; mix-blend-mode: screen; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2)); transition: opacity 0.6s ease; }
+        #quota-app-container[data-theme="snow"] #weather-canvas,
+        #quota-app-container[data-theme="beach"] #weather-canvas {
+            mix-blend-mode: normal;
+            filter: none;
+        }
+
+        .content { position: absolute; inset: 0; z-index: 10; padding: 30px 40px; display: flex; flex-direction: column; user-select: none; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+
+        #click-zone { transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: pointer; }
+        #click-zone:hover { transform: scale(1.06); }
+        #click-zone:hover circle#progress-ring { stroke-width: 14; filter: url(#svg-glow) brightness(1.3); }
+
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 20px; column-gap: 36px; margin-right: 10px; }
+
+        .metric-item { display: flex; flex-direction: column; gap: 5px; padding: 10px 14px; border-radius: 12px; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); border: 1px solid transparent; animation: fadeUpIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        .metric-item:nth-child(1) { animation-delay: 0.3s; }
+        .metric-item:nth-child(2) { animation-delay: 0.4s; }
+        .metric-item:nth-child(3) { animation-delay: 0.5s; }
+        .metric-item:nth-child(4) { animation-delay: 0.6s; }
+
+        @keyframes fadeUpIn { 0% { opacity: 0; transform: translateY(15px); } 100% { opacity: 1; transform: translateY(0); } }
+
+        .metric-item:hover { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(10px); transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+
+        .metric-label { font-size: 12px; color: rgba(255,255,255,0.9); text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+        .metric-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
+
+        .header-title { margin: 0; font-size: 26px; font-weight: 800; text-shadow: 0 2px 10px rgba(0,0,0,0.8); letter-spacing: -0.5px; animation: fadeUpIn 0.8s 0.1s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+
+        .theme-pill {
+            padding: 7px 16px; border-radius: 30px; background: rgba(0,0,0,0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.25); font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.9); box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); cursor: pointer; display: flex; align-items: center; gap: 8px;
+            animation: fadeUpIn 0.8s 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+        }
+        .theme-pill:hover { background: rgba(255,255,255,0.2); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.4); }
+        .theme-pill:active { transform: translateY(1px); }
+
+        @keyframes ring-breathe { 0% { filter: url(#svg-glow) opacity(0.85); } 50% { filter: url(#svg-glow) brightness(1.2) opacity(1); } 100% { filter: url(#svg-glow) opacity(0.85); } }
+        #progress-ring { animation: ring-breathe 4s ease-in-out infinite; }
+
+        #theme-name { pointer-events: none; display: inline-block; transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .name-out { opacity: 0; transform: translateY(-8px); }
+        .name-in { opacity: 1; transform: translateY(0); }
+
+        /* window controls */
+        .win-btn {
+            -webkit-app-region: no-drag; width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.28); color: #fff; cursor: pointer;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: all 0.25s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .win-btn:hover { background: rgba(255,255,255,0.22); transform: translateY(-1px); border-color: rgba(255,255,255,0.4); }
+        .win-btn:active { transform: translateY(0); }
+        #btn-close:hover { background: rgba(248,113,113,0.85); border-color: rgba(248,113,113,0.9); }
+        #btn-pin.pinned { background: rgba(90,148,232,0.85); border-color: rgba(90,148,232,0.9); }
+        /* interactive controls must opt out of the body drag region, or the drag
+           swallows their clicks. */
+        .win-btn, #win-controls, #btn-lang, #click-zone, #ring-mode-label, #bg-changer, .theme-pill { -webkit-app-region: no-drag; }
+    </style>
+</head>
+<body>
+    <!-- invisible resize grips at the true window edges (in the transparent PAD
+         zone). Each sets the cursor and starts an aspect-locked resize. -->
+    <div class="rz rz-n"  data-edge="n"  onmousedown="startResize(event,'n')"></div>
+    <div class="rz rz-s"  data-edge="s"  onmousedown="startResize(event,'s')"></div>
+    <div class="rz rz-e"  data-edge="e"  onmousedown="startResize(event,'e')"></div>
+    <div class="rz rz-w"  data-edge="w"  onmousedown="startResize(event,'w')"></div>
+    <div class="rz rz-ne" data-edge="ne" onmousedown="startResize(event,'ne')"></div>
+    <div class="rz rz-nw" data-edge="nw" onmousedown="startResize(event,'nw')"></div>
+    <div class="rz rz-se" data-edge="se" onmousedown="startResize(event,'se')"></div>
+    <div class="rz rz-sw" data-edge="sw" onmousedown="startResize(event,'sw')"></div>
+
+    <div id="quota-app-container">
+        <div id="bg-active" class="bg-layer"></div>
+        <div id="bg-next" class="bg-layer"></div>
+
+        <div id="preload-container" style="display:none;"></div>
+        <div class="overlay"></div>
+        <canvas id="weather-canvas"></canvas>
+
+        <div class="content">
+            <div id="drag-region" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <h2 class="header-title" data-i18n="title">Codex 额度</h2>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.9); animation: fadeUpIn 0.8s 0.15s cubic-bezier(0.16, 1, 0.3, 1) backwards;">
+                        <div id="live-dot" style="width: 10px; height: 10px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 12px #4ADE80; animation: pulse 2s infinite;"></div>
+                        <span id="live-text">Live</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div id="bg-changer" style="display: flex; align-items: center; gap: 16px;" onclick="changeBgInTheme(event)" title="点击更换当前天气的背景图">
+                        <div class="theme-pill">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                            <span id="theme-name">Stormy Seas</span>
+                        </div>
+                    </div>
+                    <!-- language toggle -->
+                    <button id="btn-lang" class="win-btn" onclick="toggleLang(event)" title="中文 / English" aria-label="Toggle language" style="width: auto; padding: 0 10px; font-size: 12px; font-weight: 700;">
+                        <span id="lang-label">中</span>
+                    </button>
+                    <!-- window controls: shown only under Electron shell -->
+                    <div id="win-controls" style="display: none; align-items: center; gap: 6px;">
+                        <button id="btn-min" class="win-btn" onclick="shellMinimize(event)" title="最小化为悬浮球 / Minimize to orb" aria-label="Minimize to orb">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                        <button id="btn-pin" class="win-btn" onclick="shellTogglePin(event)" title="固定在最前 / 取消固定" aria-label="Toggle always on top">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14l-1.5-9.5a2 2 0 0 0-.9-1.4L15 5V3H9v2l-1.6 1.1a2 2 0 0 0-.9 1.4L5 17z"></path></svg>
+                        </button>
+                        <button id="btn-close" class="win-btn" onclick="shellClose(event)" title="隐藏浮窗 (托盘图标可重新打开)" aria-label="Hide panel">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; flex: 1; padding: 0 10px; margin-top: 6px;">
+                <div id="click-zone" style="position: relative; width: 180px; height: 180px; display: flex; justify-content: center; align-items: center; animation: fadeUpIn 0.8s 0.25s cubic-bezier(0.16, 1, 0.3, 1) backwards;" onclick="toggleWeather()" title="点击圆环：切换天气">
+                    <svg width="220" height="220" style="position: absolute; transform: rotate(-90deg); overflow: visible;">
+                        <defs>
+                            <filter id="svg-glow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="10" result="blur" />
+                                <feMerge>
+                                    <feMergeNode in="blur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <circle cx="110" cy="110" r="80" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12"></circle>
+                        <circle id="progress-ring" cx="110" cy="110" r="80" fill="none" stroke="#5A94E8" stroke-width="12" stroke-dasharray="502.6" stroke-dashoffset="502.6" stroke-linecap="round" style="transition: stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1), stroke 1.2s ease;" filter="url(#svg-glow)"></circle>
+                    </svg>
+                    <div style="text-align: center; z-index: 1; transform: translateY(-2px);">
+                        <div style="font-size: 42px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 2px; text-shadow: 0 4px 20px rgba(0,0,0,0.7);" id="percent-val">0</div>
+                        <div id="ring-mode-label" style="font-size: 12px; opacity: 0.95; font-weight: 700; letter-spacing: 1.5px; text-shadow: 0 1px 6px rgba(0,0,0,0.9); padding: 2px 4px; border-radius: 6px;">PLAN LEFT</div>
+                        <div id="ring-age" onclick="refreshLiveNow(event)" title="点击立即刷新 / Click to refresh now" style="font-size: 10px; opacity: 0.6; font-weight: 600; margin-top: 3px; letter-spacing: 0.3px; text-shadow: 0 1px 4px rgba(0,0,0,0.9); min-height: 12px;"></div>
+                    </div>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-label" id="label-used">Used Today</div>
+                        <div class="metric-value" id="val-used">--</div>
+                        <div style="font-size: 11px; opacity: 0.7; font-weight: 600; letter-spacing: 0.3px; text-shadow: 0 1px 4px rgba(0,0,0,0.9);"><span id="val-context">--</span></div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label" id="label-limit">Plan</div>
+                        <div class="metric-value" id="val-limit">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label" id="label-calls">Calls Today</div>
+                        <div class="metric-value" id="val-calls">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label" id="label-reset">Sessions</div>
+                        <div class="metric-value" id="val-reset" style="color: #4ADE80;">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const themes = [
+            {
+              id: 'rain', name: "Rainy Scenes", color: '#88B8FF',
+              urls: [
+                  '/assets/backgrounds/rain-0.jpg',
+                  '/assets/backgrounds/rain-1.jpg',
+                  '/assets/backgrounds/rain-2.jpg'
+              ]
+            },
+            { id: 'meteor', name: "Kimi no Na wa", color: '#D4C4FF', urls: ['/assets/backgrounds/meteor-0.jpg', '/assets/backgrounds/meteor-1.jpg', '/assets/backgrounds/meteor-2.jpg'] },
+            { id: 'blossom', name: "Spring Petals", color: '#F4B7CF', urls: ['/assets/backgrounds/blossom-0.jpg?v=sakura-3', '/assets/backgrounds/blossom-1.jpg?v=sakura-3', '/assets/backgrounds/blossom-2.jpg?v=sakura-3'] },
+            {
+              id: 'snow', name: "Silent Snow", color: '#CDE4FF',
+              urls: [
+                  '/assets/backgrounds/snow-0.jpg?v=winter-2',
+                  '/assets/backgrounds/snow-1.jpg?v=winter-2',
+                  '/assets/backgrounds/snow-2.jpg?v=winter-2'
+              ]
+            },
+            { id: 'beach', name: "Ocean Breeze", color: '#75D5E8', urls: ['/assets/backgrounds/beach-0.jpg?v=ocean-2', '/assets/backgrounds/beach-1.jpg?v=ocean-2', '/assets/backgrounds/beach-2.jpg?v=ocean-2'] }
+        ];
+
+        let currentIdx = (function () {
+            try {
+                const requested = new URLSearchParams(location.search).get('theme');
+                const index = themes.findIndex((theme) => theme.id === requested);
+                if (index >= 0) return index;
+            } catch (_) {}
+            return 0;
+        })();
+        let bgIndices = new Array(themes.length).fill(0);
+        try {
+            const requestedBg = Number.parseInt(new URLSearchParams(location.search).get('bg'), 10);
+            if (Number.isFinite(requestedBg) && themes[currentIdx].urls.length) {
+                bgIndices[currentIdx] = Math.max(0, requestedBg) % themes[currentIdx].urls.length;
+            }
+        } catch (_) {}
+
+        const canvas = document.getElementById('weather-canvas');
+        const ctx = canvas.getContext('2d');
+        const appContainer = document.getElementById('quota-app-container');
+        const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        let width = 680, height = 380;
+        canvas.width = width; canvas.height = height;
+        appContainer.dataset.theme = themes[currentIdx].id;
+
+        const backgroundLoads = new Map();
+        function loadBackground(src) {
+            if (backgroundLoads.has(src)) return backgroundLoads.get(src);
+            const promise = new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(src);
+                img.onerror = () => reject(new Error('Background failed to load: ' + src));
+                img.src = src;
+            });
+            backgroundLoads.set(src, promise);
+            promise.catch(() => backgroundLoads.delete(src));
+            return promise;
+        }
+        themes.forEach((theme) => theme.urls.forEach((src) => loadBackground(src).catch(() => {})));
+
+        // ---- background init (theme visuals) ----
+        loadBackground(themes[currentIdx].urls[bgIndices[currentIdx]]).then((src) => {
+            document.getElementById('bg-active').style.backgroundImage = "url('" + src + "')";
+            document.getElementById('theme-name').innerText = themes[currentIdx].name;
+            document.getElementById('progress-ring').style.stroke = themes[currentIdx].color;
+        }).catch((error) => console.error(error));
+
+        // =====================================================================
+        //  I18N  — bilingual strings (中文 / English)
+        // =====================================================================
+        const I18N = {
+            zh: {
+                title: 'Codex 额度', live: '实时', offline: '离线',
+                m_today_used: '本日已用', m_plan: '套餐', m_calls: '今日调用', m_sessions: '今日会话',
+                ring_weekly: '周额度', ring_daily: '今日剩余', ring_context: '上下文剩余',
+                plan_plus: 'Plus 套餐', plan_pro: 'Pro 套餐', plan_team: 'Team 套餐', plan_free: '免费版', plan_unknown: '未知套餐',
+                tip_ring: '周额度（来自 ChatGPT 账户）', tip_weather: '点击圆环：切换天气',
+                tip_bg: '点击更换该天气的背景图', tip_lang: '中文 / English',
+                tip_pin_on: '已置顶（点击取消）', tip_pin_off: '点击置顶', tip_close: '隐藏浮窗（托盘图标可重开）',
+                age_prefix: '更新于 ', age_now: '刚刚', age_min: ' 分钟前', age_hr: ' 小时前', age_day: ' 天前', live_badge: '● 实时', refreshing: '刷新中…'
+            },
+            en: {
+                title: 'Codex Quota', live: 'Live', offline: 'Offline',
+                m_today_used: 'Used Today', m_plan: 'Plan', m_calls: 'Calls Today', m_sessions: 'Sessions',
+                ring_weekly: 'ACCOUNT WEEKLY', ring_daily: 'DAILY LEFT', ring_context: 'CONTEXT LEFT',
+                plan_plus: 'Plus plan', plan_pro: 'Pro plan', plan_team: 'Team plan', plan_free: 'Free', plan_unknown: 'Unknown plan',
+                tip_ring: 'Account weekly quota (from ChatGPT account)', tip_weather: 'Click ring: switch weather',
+                tip_bg: 'Click to change this weather\'s background', tip_lang: '中文 / English',
+                tip_pin_on: 'Pinned (click to unpin)', tip_pin_off: 'Click to pin on top', tip_close: 'Hide panel (reopen from tray)',
+                age_prefix: 'updated ', age_now: 'just now', age_min: 'm ago', age_hr: 'h ago', age_day: 'd ago', live_badge: '● LIVE', refreshing: 'refreshing…'
+            }
+        };
+        let LANG = (function () {
+            try {
+                const q = new URLSearchParams(location.search).get('lang');
+                if (q === 'zh' || q === 'en') return q;
+                const saved = localStorage.getItem('quota-lang');
+                if (saved === 'zh' || saved === 'en') return saved;
+            } catch (_) {}
+            return (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+        })();
+        function t(key) { return (I18N[LANG] && I18N[LANG][key]) || (I18N.en[key]) || key; }
+
+        function applyI18n() {
+            document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+            document.querySelectorAll('[data-i18n]').forEach((el) => {
+                el.textContent = t(el.getAttribute('data-i18n'));
+            });
+            const langLabel = document.getElementById('lang-label');
+            if (langLabel) langLabel.textContent = LANG === 'zh' ? '中' : 'EN';
+            const setTip = (id, key) => { const e = document.getElementById(id); if (e) e.title = t(key); };
+            setTip('ring-mode-label', 'tip_ring');
+            setTip('click-zone', 'tip_weather');
+            setTip('btn-lang', 'tip_lang');
+            setTip('btn-close', 'tip_close');
+            const bg = document.getElementById('bg-changer'); if (bg) bg.title = t('tip_bg');
+            if (lastData) render(lastData);
+            reflectPin(pinned);
+        }
+        function toggleLang(e) {
+            if (e) e.stopPropagation();
+            LANG = LANG === 'zh' ? 'en' : 'zh';
+            try { localStorage.setItem('quota-lang', LANG); } catch (_) {}
+            applyI18n();
+        }
+
+        // =====================================================================
+        //  LIVE DATA ENGINE  — polls the local quota service (server.js)
+        // =====================================================================
+        const RING_CIRC = 502.6;                 // 2*pi*r for r=80
+        const RING_MODES = ['weekly', 'daily', 'context'];
+        let ringMode = 'weekly';
+        let lastData = null;
+        let displayPct = { weekly: 0, daily: 0, context: 0 };
+        let displayNums = { used: 0, calls: 0 };
+        let SERVER = (function () {
+            try {
+                const q = new URLSearchParams(location.search).get('server');
+                if (q) return q.replace(/\/+$/, '');
+            } catch (_) {}
+            if (window.QUOTA_SERVER) return window.QUOTA_SERVER;
+            if (location.protocol.indexOf('http') === 0) return location.origin;
+            return 'http://127.0.0.1:8787';
+        })();
+        let pollTimer = null;
+        let failures = 0;
+        const DEMO_MODE = (function () {
+            try { return new URLSearchParams(location.search).get('demo') === '1'; }
+            catch (_) { return false; }
+        })();
+        const DEMO_DATA = {
+            ok: true,
+            updatedAt: new Date().toISOString(),
+            plan: {
+                planType: 'plus',
+                source: 'live',
+                snapshotAt: new Date().toISOString(),
+                primary: { usedPercent: 14, remainingPct: 86, windowLabel: 'weekly' }
+            },
+            daily: { used: 20080000, limit: 20000000, remainingPct: 0 },
+            context: { used: 69900, limit: 258400, remainingPct: 73 },
+            callsToday: 188,
+            sessionsToday: 4,
+            config: { refreshMs: 4000 }
+        };
+
+        function fmtInt(n) { return (n || 0).toLocaleString(); }
+        function fmtCompact(n) {
+            n = n || 0;
+            if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+            if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+            return String(n);
+        }
+
+        function animateNum(id, from, to, fmt) {
+            const el = document.getElementById(id); if (!el) return;
+            if (DEMO_MODE) {
+                el.innerHTML = fmt(to);
+                return;
+            }
+            let start = null; const dur = 900;
+            const step = (ts) => {
+                if (!start) start = ts;
+                const p = Math.min((ts - start) / dur, 1);
+                const ease = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+                const v = ease * (to - from) + from;
+                el.innerHTML = fmt(v);
+                if (p < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        }
+
+        function setRing(pct, fromPct) {
+            const ring = document.getElementById('progress-ring');
+            ring.style.strokeDashoffset = RING_CIRC * (1 - pct / 100);
+            const el = document.getElementById('percent-val');
+            if (DEMO_MODE) {
+                el.innerHTML = Math.round(pct) + '%';
+                return;
+            }
+            let start = null; const dur = 1200;
+            const step = (ts) => {
+                if (!start) start = ts;
+                const p = Math.min((ts - start) / dur, 1);
+                const ease = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+                el.innerHTML = Math.round(ease * (pct - fromPct) + fromPct) + '%';
+                if (p < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        }
+
+        function setConnState(ok) {
+            const dot = document.getElementById('live-dot');
+            const txt = document.getElementById('live-text');
+            if (!dot) return;
+            if (ok) {
+                dot.style.background = '#4ADE80'; dot.style.boxShadow = '0 0 12px #4ADE80';
+                dot.style.animation = 'pulse 2s infinite'; txt.innerText = t('live');
+            } else {
+                dot.style.background = '#F87171'; dot.style.boxShadow = '0 0 12px #F87171';
+                dot.style.animation = 'none'; txt.innerText = t('offline');
+            }
+        }
+
+        function modeData(d, mode) {
+            if (mode === 'weekly') {
+                const pr = d.plan && d.plan.primary;
+                if (pr) return { pct: pr.remainingPct, ok: true, labelKey: 'ring_weekly' };
+                return { pct: 100, ok: false, labelKey: 'ring_weekly' };
+            }
+            if (mode === 'daily') return { pct: d.daily.remainingPct, ok: true, labelKey: 'ring_daily' };
+            return { pct: d.context.remainingPct, ok: true, labelKey: 'ring_context' };
+        }
+
+        // "how old is this snapshot" → short human string
+        function ageLabel(iso) {
+            if (!iso) return '';
+            const ms = Date.now() - new Date(iso).getTime();
+            if (ms < 0) return '';
+            const m = Math.floor(ms / 60000);
+            if (m < 1) return t('age_now');
+            if (m < 60) return m + t('age_min');
+            const h = Math.floor(m / 60);
+            if (h < 24) return h + t('age_hr');
+            return Math.floor(h / 24) + t('age_day');
+        }
+
+        function renderRingForMode() {
+            if (!lastData) return;
+            const md = modeData(lastData, ringMode);
+            const from = displayPct[ringMode];
+            setRing(md.pct, from);
+            displayPct[ringMode] = md.pct;
+            document.getElementById('ring-mode-label').innerText = t(md.labelKey);
+            const ring = document.getElementById('progress-ring');
+            if (!md.ok) ring.style.stroke = 'rgba(255,255,255,0.35)';
+            else if (md.pct <= 10) ring.style.stroke = '#F87171';
+            else ring.style.stroke = themes[currentIdx].color;
+
+            // freshness note under the ring: only meaningful for the real plan
+            // quota (weekly), which only changes when Codex hits its billed
+            // backend. Shows e.g. "更新于 47 分钟前" so a static number reads as
+            // "source unchanged", not "panel stuck".
+            const note = document.getElementById('ring-age');
+            if (note) {
+                const plan = lastData.plan;
+                if (ringMode === 'weekly' && plan && plan.source === 'live') {
+                    // fetched live from the backend — updates even while idle
+                    note.innerText = t('live_badge');
+                    note.style.opacity = '0.85';
+                } else if (ringMode === 'weekly' && plan && plan.snapshotAt) {
+                    note.innerText = t('age_prefix') + ageLabel(plan.snapshotAt);
+                    note.style.opacity = '0.6';
+                } else {
+                    note.innerText = '';
+                }
+            }
+        }
+
+        // full render (called on new data AND on language switch).
+        // The 4 metric cards always show REAL data: today's token usage (with a
+        // context sub-line), the plan type, today's call count, and today's
+        // session count. The ring (separately) shows the real weekly plan quota.
+        function render(d) {
+            lastData = d;
+            const plan = d.plan || {};
+
+            const lblUsed = document.getElementById('label-used');
+            const lblLimit = document.getElementById('label-limit');
+            const lblCalls = document.getElementById('label-calls');
+            const lblReset = document.getElementById('label-reset');
+
+            // card 1 — 本日已用 (real tokens used today) + context sub-line
+            lblUsed.textContent = t('m_today_used');
+            animateNum('val-used', displayNums.used, d.daily.used, (v) => fmtCompact(Math.round(v)));
+            displayNums.used = d.daily.used;
+            document.getElementById('val-context').innerText =
+                fmtCompact(d.context.used) + ' / ' + fmtCompact(d.context.limit) + ' ctx';
+
+            // card 2 — 套餐 (plan type)
+            lblLimit.textContent = t('m_plan');
+            const planKey = 'plan_' + (plan.planType || 'unknown');
+            document.getElementById('val-limit').innerText =
+                t(I18N[LANG][planKey] ? planKey : 'plan_unknown');
+            document.getElementById('val-limit').style.fontSize = '18px';
+
+            // card 3 — 今日调用 (calls today)
+            lblCalls.textContent = t('m_calls');
+            animateNum('val-calls', displayNums.calls, d.callsToday, (v) => fmtInt(Math.round(v)));
+            displayNums.calls = d.callsToday;
+
+            // card 4 — 今日会话 (sessions today)
+            lblReset.textContent = t('m_sessions');
+            document.getElementById('val-reset').innerText = (d.sessionsToday != null ? d.sessionsToday : '—');
+
+            renderRingForMode();
+            updateOrb(d);
+            setConnState(true);
+        }
+
+        // orb (minimized view): show the account-weekly remaining % + ring
+        function updateOrb(d) {
+            const pctEl = document.getElementById('orb-pct');
+            const ring = document.getElementById('orb-ring');
+            if (!pctEl) return;
+            const pr = d.plan && d.plan.primary;
+            const pct = pr ? pr.remainingPct : (d.context ? d.context.remainingPct : 100);
+            pctEl.innerText = Math.round(pct) + '%';
+            if (ring) {
+                const circ = 201; // 2*pi*32
+                const c = ring.querySelector('circle');
+                if (c) {
+                    c.style.strokeDashoffset = circ * (1 - pct / 100);
+                    c.setAttribute('stroke', pct <= 10 ? '#F87171' : themes[currentIdx].color);
+                }
+            }
+        }
+
+        // ---- Electron shell integration -----------------------------------
+        const SHELL = window.quotaShell || null;
+        let pinned = true;
+        function shellClose(e) { if (e) e.stopPropagation(); if (SHELL) SHELL.close(); }
+        function shellMinimize(e) { if (e) e.stopPropagation(); if (SHELL) SHELL.minimize(); }
+        function shellTogglePin(e) {
+            if (e) e.stopPropagation();
+            if (SHELL) SHELL.togglePin();
+        }
+        // orb interaction: drag to move, click (no drag) to restore the card.
+        let orbMoved = false;
+        function orbDown(e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            orbMoved = false;
+            const sx = e.screenX, sy = e.screenY;
+            if (SHELL && SHELL.orbDragStart) SHELL.orbDragStart();
+            const move = (ev) => {
+                if (Math.abs(ev.screenX - sx) > 3 || Math.abs(ev.screenY - sy) > 3) orbMoved = true;
+            };
+            const up = () => {
+                if (SHELL && SHELL.orbDragEnd) SHELL.orbDragEnd();
+                window.removeEventListener('mousemove', move);
+                window.removeEventListener('mouseup', up);
+                if (!orbMoved && SHELL && SHELL.restore) SHELL.restore(); // a click = restore
+            };
+            window.addEventListener('mousemove', move);
+            window.addEventListener('mouseup', up);
+        }
+        // switch between card and orb view when main tells us
+        function setView(v) {
+            document.body.classList.toggle('mini', v === 'orb');
+        }
+        if (SHELL && SHELL.onView) SHELL.onView(setView);
+        function reflectPin(on) {
+            pinned = on;
+            const b = document.getElementById('btn-pin');
+            if (!b) return;
+            b.classList.toggle('pinned', !!on);
+            b.title = on ? t('tip_pin_on') : t('tip_pin_off');
+        }
+        // Edge/corner resize: the inline onmousedown on each .rz handle calls this.
+        // It tells the main process which edge was grabbed; main then follows the
+        // OS cursor, keeping the opposite edge anchored and the aspect ratio locked
+        // — exactly like dragging a normal window frame.
+        function startResize(e, edge) {
+            if (!SHELL || !SHELL.resizeStart) return;
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            SHELL.resizeStart(edge);
+            const end = () => {
+                if (SHELL.resizeEnd) SHELL.resizeEnd();
+                window.removeEventListener('mouseup', end);
+            };
+            window.addEventListener('mouseup', end);
+        }
+
+        if (SHELL) {
+            const wc = document.getElementById('win-controls');
+            if (wc) wc.style.display = 'flex';
+            if (SHELL.onPinState) SHELL.onPinState(reflectPin);
+            if (SHELL.getPin) SHELL.getPin().then(reflectPin).catch(() => {});
+
+            // ctrl/cmd + wheel to zoom (fine adjustment; edge-drag is the main way)
+            window.addEventListener('wheel', (ev) => {
+                if (!ev.ctrlKey && !ev.metaKey) return;
+                ev.preventDefault();
+                if (SHELL.scaleBy) SHELL.scaleBy(ev.deltaY < 0 ? 0.05 : -0.05);
+            }, { passive: false });
+        }
+
+        async function poll() {
+            try {
+                const r = await fetch(SERVER + '/quota', { cache: 'no-store' });
+                if (!r.ok) throw new Error('http ' + r.status);
+                const d = await r.json();
+                if (d && d.ok) { failures = 0; render(d); }
+                else throw new Error('bad payload');
+            } catch (e) {
+                failures++;
+                if (failures >= 2) setConnState(false);
+            }
+        }
+
+        // Click the "● 实时/LIVE" badge to force an immediate backend fetch.
+        let refreshing = false;
+        async function refreshLiveNow(e) {
+            if (e) e.stopPropagation();
+            if (DEMO_MODE) {
+                render({ ...DEMO_DATA, updatedAt: new Date().toISOString() });
+                return;
+            }
+            if (refreshing) return;
+            refreshing = true;
+            const note = document.getElementById('ring-age');
+            const prev = note ? note.innerText : '';
+            if (note) { note.innerText = t('refreshing'); note.style.opacity = '0.9'; }
+            try {
+                const r = await fetch(SERVER + '/refresh', { cache: 'no-store' });
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d && d.ok) { failures = 0; render(d); }
+                }
+            } catch (_) {
+                if (note) note.innerText = prev;
+            } finally {
+                refreshing = false;
+            }
+        }
+
+        function startPolling() {
+            if (DEMO_MODE) {
+                render(DEMO_DATA);
+                return;
+            }
+            const ms = (lastData && lastData.config && lastData.config.refreshMs) || 4000;
+            poll();
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(poll, ms);
+        }
+        applyI18n();
+        setTimeout(startPolling, 400);
+
+        // Ring is fixed on the account weekly quota — no click-to-switch.
+        function toggleRingMode() { /* disabled: ring stays on 'weekly' */ }
+
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let transitionRunning = false;
+        let pendingTransition = null;
+
+        async function performTransition(targetThemeIdx, targetBgIdx) {
+            const th = themes[targetThemeIdx];
+            const normalizedBgIdx = ((targetBgIdx % th.urls.length) + th.urls.length) % th.urls.length;
+            const src = th.urls[normalizedBgIdx];
+            try {
+                await loadBackground(src);
+            } catch (error) {
+                console.error(error);
+                return false;
+            }
+
+            const bgActive = document.getElementById('bg-active');
+            const bgNext = document.getElementById('bg-next');
+            const nameEl = document.getElementById('theme-name');
+            const newUrl = "url('" + src + "')";
+
+            canvas.style.opacity = '0';
+            nameEl.className = 'name-out';
+            bgNext.style.transition = 'none';
+            bgNext.style.opacity = '0';
+            bgNext.style.backgroundImage = newUrl;
+            void bgNext.offsetWidth;
+            bgNext.style.transition = 'opacity 0.45s cubic-bezier(0.25, 0.8, 0.25, 1)';
+
+            currentIdx = targetThemeIdx;
+            bgIndices[targetThemeIdx] = normalizedBgIdx;
+            appContainer.dataset.theme = th.id;
+            resetParticles();
+            nameEl.innerText = th.name;
+            nameEl.className = 'name-in';
+            document.getElementById('progress-ring').style.stroke = th.color;
+
+            bgNext.style.opacity = '1';
+            bgActive.style.opacity = '0';
+            canvas.style.opacity = '1';
+            await wait(480);
+
+            bgActive.style.transition = 'none';
+            bgActive.style.backgroundImage = newUrl;
+            bgActive.style.opacity = '1';
+            bgNext.style.opacity = '0';
+            void bgActive.offsetWidth;
+            bgActive.style.transition = 'opacity 0.45s cubic-bezier(0.25, 0.8, 0.25, 1)';
+            return true;
+        }
+
+        async function drainTransitions() {
+            if (transitionRunning) return;
+            transitionRunning = true;
+            while (pendingTransition) {
+                const target = pendingTransition;
+                pendingTransition = null;
+                await performTransition(target.themeIdx, target.bgIdx);
+            }
+            transitionRunning = false;
+        }
+
+        function updateUIWithSmoothTransition(targetThemeIdx, targetBgIdx) {
+            pendingTransition = {
+                themeIdx: targetThemeIdx == null ? currentIdx : targetThemeIdx,
+                bgIdx: targetBgIdx == null ? bgIndices[currentIdx] : targetBgIdx,
+            };
+            drainTransitions();
+        }
+
+        function toggleWeather(source) {
+            const targetThemeIdx = (currentIdx + 1) % themes.length;
+            updateUIWithSmoothTransition(targetThemeIdx, bgIndices[targetThemeIdx]);
+            if (source !== 'auto' && window.quotaShell && window.quotaShell.weatherInteracted) {
+                window.quotaShell.weatherInteracted();
+            }
+        }
+
+        function changeBgInTheme(event) {
+            if(event) event.stopPropagation();
+            const targetBgIdx = (bgIndices[currentIdx] + 1) % themes[currentIdx].urls.length;
+            updateUIWithSmoothTransition(currentIdx, targetBgIdx);
+            if (window.quotaShell && window.quotaShell.weatherInteracted) {
+                window.quotaShell.weatherInteracted();
+            }
+        }
+
+        if (window.quotaShell && window.quotaShell.onNextWeather) {
+            window.quotaShell.onNextWeather(() => toggleWeather('auto'));
+        }
+
+        // =====================================================================
+        //  WEATHER PARTICLE ENGINE
+        // =====================================================================
+        let particles = []; let ripples = []; let activeLightnings = [];
+        let meteorRainTriggerNext = 0;
+        function resetParticles() {
+            particles = []; activeLightnings = []; ripples = [];
+            const mode = themes[currentIdx].id;
+
+            if (mode === 'rain') {
+                for(let i=0; i<75; i++) {
+                    let depth = Math.random();
+                    particles.push({ x: Math.random()*width, y: Math.random()*height - height, r: depth * 1.2 + 0.6, l: (depth * 1.2 + 0.6) * 5, s: depth * 1.5 + 0.4 });
+                }
+            } else if (mode === 'snow') {
+                const count = reduceMotion ? 38 : 112;
+                for(let i=0; i<count; i++) {
+                    const depth = Math.pow(Math.random(), 0.82);
+                    particles.push({
+                        x: Math.random() * (width + 80) - 40,
+                        y: Math.random() * (height + 60) - 30,
+                        r: 0.55 + depth * 3.2,
+                        depth,
+                        opacity: 0.18 + depth * 0.6,
+                        speedY: 0.16 + depth * 0.62,
+                        sway: 0.12 + depth * 0.62,
+                        phase: Math.random() * Math.PI * 2,
+                        waveSpeed: 0.006 + Math.random() * 0.014,
+                        rotation: Math.random() * Math.PI * 2,
+                        spin: (Math.random() - 0.5) * (reduceMotion ? 0.002 : 0.012),
+                        flatten: 0.58 + Math.random() * 0.32
+                    });
+                }
+            } else if (mode === 'blossom') {
+                const blossomPalette = [
+                    [255, 244, 248],
+                    [255, 224, 235],
+                    [246, 194, 216],
+                    [255, 235, 241]
+                ];
+                const count = reduceMotion ? 24 : 72;
+                for(let i=0; i<count; i++) {
+                    const depth = Math.pow(Math.random(), 0.78);
+                    particles.push({
+                        x: Math.random() * (width + 80) - 40,
+                        y: Math.random() * (height + 80) - 60,
+                        r: 2.1 + depth * 3.9,
+                        depth,
+                        opacity: 0.28 + depth * 0.58,
+                        speedX: 0.08 + depth * 0.24,
+                        speedY: 0.22 + depth * 0.68,
+                        rotation: Math.random() * Math.PI * 2,
+                        spin: (Math.random() - 0.5) * (reduceMotion ? 0.004 : 0.018),
+                        roll: Math.random() * Math.PI * 2,
+                        rollSpeed: (0.008 + Math.random() * 0.024) * (reduceMotion ? 0.3 : 1),
+                        phase: Math.random() * Math.PI * 2,
+                        flutterSpeed: 0.008 + Math.random() * 0.018,
+                        sway: 0.18 + depth * 0.65,
+                        color: blossomPalette[Math.floor(Math.random() * blossomPalette.length)]
+                    });
+                }
+            } else if (mode === 'meteor') {
+                for(let i=0; i<120; i++) particles.push({ x: Math.random()*width, y: Math.random()*height, r: Math.random()*1.5, phase: Math.random() * Math.PI * 2, speed: Math.random()*0.015 + 0.01 });
+                meteorRainTriggerNext = frameCount + 30;
+            } else if (mode === 'beach') {
+                const count = reduceMotion ? 5 : 16;
+                for(let i=0; i<count; i++) {
+                    particles.push({
+                        x: Math.random() * (width + 180) - 90,
+                        y: height * (0.45 + Math.random() * 0.52),
+                        length: 34 + Math.random() * 92,
+                        thickness: 0.45 + Math.random() * 0.9,
+                        opacity: 0.025 + Math.random() * 0.075,
+                        speedX: 0.12 + Math.random() * 0.3,
+                        phase: Math.random() * Math.PI * 2,
+                        waveSpeed: 0.004 + Math.random() * 0.008,
+                        waveHeight: 1.5 + Math.random() * 4.5
+                    });
+                }
+            }
+        }
+
+        function spawnMeteor(isSmallVolley) {
+            if(isSmallVolley) {
+                activeLightnings.push({
+                    x: width + Math.random()*200, y: -(Math.random() * 100),
+                    speedX: 1.2 + Math.random() * 0.5, speedY: 0.5 + Math.random() * 0.3,
+                    length: 120 + Math.random() * 60, alpha: 0.6 + Math.random()*0.4,
+                    decay: 0.002 + Math.random() * 0.001, w: 1.8 + Math.random() * 0.5,
+                    splitPhase: 0, isSingleHuge: false
+                });
+            } else {
+                activeLightnings.push({
+                    x: width + 50, y: -(Math.random() * 50),
+                    speedX: 1.8 + Math.random() * 0.8, speedY: 0.8 + Math.random() * 0.4,
+                    length: 350 + Math.random() * 150, alpha: 1.0,
+                    decay: 0.0015 + Math.random() * 0.001, w: 3.5 + Math.random() * 0.8,
+                    splitPhase: Math.random() * 10, isSingleHuge: true
+                });
+            }
+        }
+
+        let frameCount = 0;
+        function renderEngine() {
+            ctx.clearRect(0,0,width,height);
+            const mode = themes[currentIdx].id;
+            frameCount++;
+            let globalWind = Math.sin(frameCount / 180) * 0.3;
+
+            if (mode === 'rain') {
+                particles.forEach(p => {
+                    ctx.save(); ctx.translate(p.x, p.y);
+                    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI, false);
+                    ctx.bezierCurveTo(-p.r*0.9, -p.l*0.4, -p.r*0.2, -p.l*0.8, -p.r*0.05, -p.l); ctx.bezierCurveTo(p.r*0.05, -p.l*0.8, p.r*0.8, -p.l*0.4, p.r, 0); ctx.closePath();
+                    let dropGrad = ctx.createRadialGradient(0, p.r*0.5, 0, 0, 0, p.r*1.2); let alphaFactor = Math.min(1.0, p.r * 0.6);
+                    dropGrad.addColorStop(0, "rgba(255, 255, 255, " + (0.05*alphaFactor) + ")"); dropGrad.addColorStop(0.7, "rgba(255, 255, 255, " + (0.3*alphaFactor) + ")"); dropGrad.addColorStop(1, "rgba(255, 255, 255, " + (0.8*alphaFactor) + ")");
+                    ctx.fillStyle = dropGrad; ctx.fill();
+                    if (p.r > 1.0) { ctx.fillStyle = "rgba(255, 255, 255, 0.9)"; ctx.beginPath(); ctx.ellipse(-p.r*0.35, p.r*0.35, p.r*0.2, p.r*0.4, Math.PI/4, 0, Math.PI*2); ctx.fill(); }
+                    ctx.restore(); p.y += p.s;
+                    if(p.y > height - 15) {
+                        if (p.r > 1.2) ripples.push({x: p.x, y: height - 15, r: 1.5, op: 0.8, speed: 0.12 + Math.random()*0.08});
+                        p.y = -(Math.random() * 200 + 20); p.x = Math.random()*width;
+                    }
+                });
+                ripples.forEach((r, i) => {
+                    ctx.strokeStyle = "rgba(255, 255, 255, " + Math.max(0, r.op) + ")"; ctx.lineWidth = 0.8;
+                    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r + 2, (r.r + 2)*0.18, 0, 0, Math.PI*2); ctx.stroke();
+                    r.r += r.speed; r.op -= 0.005; if(r.op <= 0) ripples.splice(i, 1);
+                });
+            }
+            else if (mode === 'snow') {
+                const snowGust = reduceMotion ? 0 : Math.sin(frameCount / 230) * 0.16 + Math.sin(frameCount / 91) * 0.04;
+                particles.forEach(p => {
+                    const drift = Math.sin(frameCount * p.waveSpeed + p.phase);
+                    const alpha = p.opacity * (0.9 + Math.abs(drift) * 0.1);
+                    const r = p.r;
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation);
+                    ctx.scale(1, p.flatten);
+                    ctx.filter = p.depth < 0.22 ? 'blur(0.55px)' : (p.depth > 0.82 ? 'blur(0.18px)' : 'none');
+                    const grad = ctx.createRadialGradient(-r * 0.18, -r * 0.18, 0, 0, 0, r);
+                    grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+                    grad.addColorStop(0.62, `rgba(235, 246, 255, ${alpha * 0.86})`);
+                    grad.addColorStop(1, 'rgba(220, 238, 252, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, r, r * 0.82, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+
+                    p.x += snowGust * (0.55 + p.depth) + drift * p.sway * 0.12;
+                    p.y += p.speedY;
+                    p.rotation += p.spin;
+                    if(p.y > height + 18 || p.x < -45 || p.x > width + 45) {
+                        p.y = -12 - Math.random() * 55;
+                        p.x = Math.random() * (width + 60) - 30;
+                        p.phase = Math.random() * Math.PI * 2;
+                    }
+                });
+            }
+            else if (mode === 'blossom') {
+                const blossomGust = reduceMotion ? 0 : Math.sin(frameCount / 170) * 0.18 + Math.max(0, Math.sin(frameCount / 390)) * 0.32;
+                particles.forEach(p => {
+                    const flutter = Math.sin(frameCount * p.flutterSpeed + p.phase);
+                    const rollScale = 0.22 + Math.abs(Math.cos(p.roll)) * 0.78;
+                    const alpha = p.opacity * (0.88 + flutter * 0.12);
+                    const [red, green, blue] = p.color;
+                    const r = p.r;
+
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation + flutter * 0.22);
+                    ctx.scale(0.78 + p.depth * 0.2, rollScale);
+                    ctx.filter = p.depth < 0.25 ? 'blur(0.45px)' : 'none';
+                    if (p.depth > 0.72) {
+                        ctx.shadowBlur = 5 + p.depth * 4;
+                        ctx.shadowColor = 'rgba(239, 146, 183, 0.28)';
+                    }
+
+                    const petalFill = ctx.createLinearGradient(0, -r, 0, r);
+                    petalFill.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${alpha * 0.82})`);
+                    petalFill.addColorStop(0.58, `rgba(${red}, ${green}, ${blue}, ${alpha})`);
+                    petalFill.addColorStop(1, `rgba(231, 151, 183, ${alpha * 0.86})`);
+                    ctx.fillStyle = petalFill;
+                    ctx.beginPath();
+                    ctx.moveTo(0, r * 0.96);
+                    ctx.bezierCurveTo(r * 0.76, r * 0.58, r * 1.04, -r * 0.18, r * 0.46, -r * 0.88);
+                    ctx.bezierCurveTo(r * 0.24, -r * 0.68, r * 0.12, -r * 0.48, 0, -r * 0.36);
+                    ctx.bezierCurveTo(-r * 0.12, -r * 0.48, -r * 0.24, -r * 0.68, -r * 0.46, -r * 0.88);
+                    ctx.bezierCurveTo(-r * 1.04, -r * 0.18, -r * 0.76, r * 0.58, 0, r * 0.96);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.strokeStyle = `rgba(184, 91, 128, ${alpha * 0.24})`;
+                    ctx.lineWidth = 0.45;
+                    ctx.beginPath();
+                    ctx.moveTo(0, r * 0.64);
+                    ctx.quadraticCurveTo(flutter * r * 0.08, r * 0.08, 0, -r * 0.28);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    p.x += p.speedX + blossomGust * (0.55 + p.depth) + flutter * p.sway * 0.13;
+                    p.y += p.speedY * (0.9 + Math.abs(flutter) * 0.24);
+                    p.rotation += p.spin;
+                    p.roll += p.rollSpeed;
+
+                    if (p.y > height + 24 || p.x > width + 34 || p.x < -50) {
+                        p.y = -18 - Math.random() * 70;
+                        p.x = Math.random() * (width + 60) - 30;
+                        p.phase = Math.random() * Math.PI * 2;
+                    }
+                });
+            }
+            else if (mode === 'meteor') {
+                particles.forEach((p) => {
+                    let opacity = 0.1 + Math.abs(Math.sin(frameCount * p.speed + p.phase)) * 0.8;
+                    ctx.fillStyle = "rgba(255, 255, 255, " + opacity + ")";
+                    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+                });
+
+                if (Math.random() < 0.003 && activeLightnings.length < 2) {
+                    spawnMeteor(false);
+                }
+
+                if (frameCount > meteorRainTriggerNext) {
+                    let numMeteors = Math.floor(Math.random() * 4) + 3;
+                    for(let i=0; i<numMeteors; i++) spawnMeteor(true);
+                    meteorRainTriggerNext = frameCount + 300 + Math.random()*600;
+                }
+
+                activeLightnings.forEach((m, i) => {
+                    const tailX = m.x + m.length; const tailY = m.y - m.length * (m.speedY / m.speedX);
+
+                    ctx.shadowBlur = m.isSingleHuge ? 40 : 20;
+                    ctx.shadowColor = "rgba(180, 200, 255, 1)";
+
+                    const grad = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
+                    grad.addColorStop(0, "rgba(255, 255, 255, " + (m.alpha) + ")");
+                    grad.addColorStop(0.1, "rgba(169, 204, 255, " + (m.alpha * 0.8) + ")");
+                    grad.addColorStop(0.4, "rgba(206, 147, 216, " + (m.alpha * 0.4) + ")");
+                    grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+                    ctx.strokeStyle = grad; ctx.lineWidth = m.w;
+                    ctx.lineCap = 'butt';
+
+                    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(tailX, tailY); ctx.stroke();
+
+                    if (m.isSingleHuge && m.alpha > 0.4 && Math.random() > 0.3) {
+                       let sepY = Math.sin(frameCount * 0.5 + m.splitPhase) * (15 + m.w*2);
+                       let sepAlpha = m.alpha * 0.6;
+                       ctx.strokeStyle = "rgba(255, 150, 200, " + sepAlpha + ")";
+                       ctx.lineWidth = m.w * 0.4;
+                       ctx.lineCap = 'butt';
+                       ctx.beginPath(); ctx.moveTo(m.x + 40, m.y - sepY); ctx.lineTo(tailX, tailY - sepY * 2.5); ctx.stroke();
+                    }
+
+                    ctx.shadowBlur = 0;
+
+                    m.x -= m.speedX; m.y += m.speedY; m.alpha -= m.decay;
+                    if (m.alpha <= 0 || m.x < -400 || m.y > height+300) activeLightnings.splice(i, 1);
+                });
+            }
+            else if (mode === 'beach') {
+                particles.forEach(p => {
+                    const wave = Math.sin(frameCount * p.waveSpeed + p.phase);
+                    const startX = p.x;
+                    const endX = p.x + p.length;
+                    const endY = p.y + wave * p.waveHeight;
+                    const mist = ctx.createLinearGradient(startX, p.y, endX, endY);
+                    mist.addColorStop(0, 'rgba(210, 240, 244, 0)');
+                    mist.addColorStop(0.45, `rgba(220, 246, 248, ${p.opacity})`);
+                    mist.addColorStop(1, 'rgba(210, 240, 244, 0)');
+                    ctx.strokeStyle = mist;
+                    ctx.lineWidth = p.thickness;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(startX, p.y);
+                    ctx.bezierCurveTo(
+                        startX + p.length * 0.32, p.y - wave * p.waveHeight,
+                        startX + p.length * 0.68, p.y + wave * p.waveHeight,
+                        endX, endY
+                    );
+                    ctx.stroke();
+
+                    p.x += p.speedX;
+                    if (p.x > width + 30) {
+                        p.x = -p.length - Math.random() * 80;
+                        p.y = height * (0.45 + Math.random() * 0.52);
+                        p.phase = Math.random() * Math.PI * 2;
+                    }
+                });
+            }
+            requestAnimationFrame(renderEngine);
+        }
+
+        resetParticles();
+        renderEngine();
+    </script>
+</body>
+</html>

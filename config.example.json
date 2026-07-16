@@ -1,0 +1,22 @@
+{
+  "port": 8787,
+  "refreshMs": 4000,
+  "liveUsageMs": 60000,
+  "dailyBudgetTokens": 20000000,
+  "alwaysOnTop": true,
+  "lang": "zh",
+  "scale": 0.8,
+  "windowX": null,
+  "windowY": null,
+  "defaultTheme": "rain",
+  "defaultBackgroundIndex": 1,
+  "minScale": 0.5,
+  "maxScale": 1.4,
+  "followCodex": true,
+  "watchProcesses": [
+    "Codex",
+    "ChatGPT"
+  ],
+  "watchIntervalMs": 5000,
+  "weatherSwitchIntervalMs": 600000
+}

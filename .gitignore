@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+release/
+.cache/
+.tmp/
+*.log
+config.json
+docs/images/frames/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+Thumbs.db
