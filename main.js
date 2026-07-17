@@ -44,6 +44,7 @@ if (/^\d+$/.test(process.env.QUOTA_WEATHER_PORT || '')) {
 }
 
 let scale = clampScale(cfg.scale || 0.8);
+let portraitScale = clampPortraitScale(cfg.portraitScale == null ? 0.5 : cfg.portraitScale);
 let win = null;
 let tray = null;
 let trayMenu = null;
@@ -59,9 +60,10 @@ let userHidden = false; // set true when the user manually hides while Codex run
 // card → crystal-ball orb → back to card.
 let viewMode = 'card';   // 'card' | 'mini' | 'orb'
 let cardBounds = null;   // remembered card window bounds, to restore later
+let suppressResizeSyncUntil = 0;
 
-const MINI_W = 240;      // portrait card based on the compact reference layout
-const MINI_H = 520;
+const MINI_BASE_W = 240; // portrait layout stays sharp at every window scale
+const MINI_BASE_H = 520;
 const ORB = 128;         // crystal-ball orb (square)
 
 function clampScale(s) {
@@ -71,6 +73,17 @@ function clampScale(s) {
 }
 function outerSizeFor(s) {
   return { w: Math.round(OUTER_W * s), h: Math.round(OUTER_H * s) };
+}
+function clampPortraitScale(s) {
+  const min = cfg.minPortraitScale == null ? 0.35 : Number(cfg.minPortraitScale);
+  const max = cfg.maxPortraitScale == null ? 1.25 : Number(cfg.maxPortraitScale);
+  return Math.min(max, Math.max(min, Number(s) || 0.5));
+}
+function portraitSizeFor(s) {
+  return { w: Math.round(MINI_BASE_W * s), h: Math.round(MINI_BASE_H * s) };
+}
+function suppressResizeSync(ms = 250) {
+  suppressResizeSyncUntil = Math.max(suppressResizeSyncUntil, Date.now() + ms);
 }
 function initialPosition(w, h) {
   const primaryArea = screen.getPrimaryDisplay().workArea;
@@ -151,18 +164,84 @@ function createWindow() {
           throw new Error('renderer state is incomplete');
         }
         const expectedScale = scale;
-        setView('mini');
-        await new Promise((resolve) => setTimeout(resolve, 350));
-        const [miniWidth, miniHeight] = win.getContentSize();
-        if (miniWidth !== MINI_W || miniHeight !== MINI_H) {
-          throw new Error(`portrait view size is ${miniWidth}x${miniHeight}, expected ${MINI_W}x${MINI_H}`);
+        const expectedPortraitScale = portraitScale;
+        const enlargedCardScale = clampScale(expectedScale + 0.1);
+        applyScale(enlargedCardScale);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const enlargedCardSize = outerSizeFor(enlargedCardScale);
+        const [enlargedCardWidth, enlargedCardHeight] = win.getContentSize();
+        if (Math.abs(enlargedCardWidth - enlargedCardSize.w) > 2 || Math.abs(enlargedCardHeight - enlargedCardSize.h) > 2) {
+          throw new Error(`card scaling produced ${enlargedCardWidth}x${enlargedCardHeight}, expected ${enlargedCardSize.w}x${enlargedCardSize.h}`);
         }
-        minimizeToOrb();
+        await win.webContents.executeJavaScript("document.querySelector('.layout-switch').click()");
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        if (viewMode !== 'mini') throw new Error('clicking the card Codex title did not open portrait view');
+        const [miniWidth, miniHeight] = win.getContentSize();
+        const expectedPortraitSize = portraitSizeFor(expectedPortraitScale);
+        if (Math.abs(miniWidth - expectedPortraitSize.w) > 2 || Math.abs(miniHeight - expectedPortraitSize.h) > 2) {
+          throw new Error(`portrait view size is ${miniWidth}x${miniHeight}, expected ${expectedPortraitSize.w}x${expectedPortraitSize.h}`);
+        }
+        const portraitRenderer = await win.webContents.executeJavaScript(`({
+          view: document.body.className,
+          miniDisplay: getComputedStyle(document.getElementById('mini')).display,
+          canvasWidth: document.getElementById('weather-canvas').width,
+          canvasHeight: document.getElementById('weather-canvas').height
+        })`);
+        if (!portraitRenderer.view.includes('view-mini') || portraitRenderer.miniDisplay !== 'flex' ||
+            portraitRenderer.canvasWidth !== MINI_BASE_W || portraitRenderer.canvasHeight !== MINI_BASE_H) {
+          throw new Error(`portrait renderer layout is inconsistent after card scaling: ${JSON.stringify(portraitRenderer)}`);
+        }
+        if (!win.isResizable()) throw new Error('portrait view is not resizable');
+        const enlargedPortraitScale = clampPortraitScale(expectedPortraitScale + 0.1);
+        applyScale(enlargedPortraitScale);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const enlargedPortraitSize = portraitSizeFor(enlargedPortraitScale);
+        const [enlargedWidth, enlargedHeight] = win.getContentSize();
+        if (Math.abs(enlargedWidth - enlargedPortraitSize.w) > 2 || Math.abs(enlargedHeight - enlargedPortraitSize.h) > 2) {
+          throw new Error(`portrait scaling produced ${enlargedWidth}x${enlargedHeight}, expected ${enlargedPortraitSize.w}x${enlargedPortraitSize.h}`);
+        }
+        await win.webContents.executeJavaScript("document.querySelector('#mini .mini-top').click()");
         await new Promise((resolve) => setTimeout(resolve, 900));
-        if (Math.abs(Number(loadConfig().scale) - expectedScale) > 0.001) {
+        if (viewMode !== 'orb') throw new Error('clicking the portrait Codex title did not open the orb');
+        if (Math.abs(Number(loadConfig().scale) - enlargedCardScale) > 0.001) {
           throw new Error('minimizing to the orb overwrote the saved card scale');
         }
-        restoreFromOrb();
+        if (Math.abs(Number(loadConfig().portraitScale) - enlargedPortraitScale) > 0.001) {
+          throw new Error('the portrait scale was not preserved');
+        }
+        await win.webContents.executeJavaScript(`(() => {
+          const orb = document.getElementById('orb');
+          orb.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, screenX: 100, screenY: 100 }));
+          window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, screenX: 100, screenY: 100 }));
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        if (viewMode !== 'card') throw new Error('clicking the orb did not restore the card');
+        if (!win.isResizable()) throw new Error('card is not resizable after returning from the orb');
+        const [cardMinWidth, cardMinHeight] = win.getMinimumSize();
+        const expectedCardMin = outerSizeFor(cfg.minScale || 0.5);
+        if (cardMinWidth !== expectedCardMin.w || cardMinHeight !== expectedCardMin.h) {
+          throw new Error(`card minimum size stayed ${cardMinWidth}x${cardMinHeight} after the orb`);
+        }
+        const [restoredWidth, restoredHeight] = win.getContentSize();
+        if (Math.abs(restoredWidth - enlargedCardSize.w) > 2 || Math.abs(restoredHeight - enlargedCardSize.h) > 2) {
+          throw new Error(`restored card is ${restoredWidth}x${restoredHeight}, expected ${enlargedCardSize.w}x${enlargedCardSize.h}`);
+        }
+        const restoredRenderer = await win.webContents.executeJavaScript(`({
+          view: document.body.className,
+          miniDisplay: getComputedStyle(document.getElementById('mini')).display,
+          gripDisplay: getComputedStyle(document.querySelector('.rz-se')).display
+        })`);
+        if (!restoredRenderer.view.includes('view-card') || restoredRenderer.miniDisplay !== 'none' || restoredRenderer.gripDisplay === 'none') {
+          throw new Error(`renderer layout did not fully restore after the orb: ${JSON.stringify(restoredRenderer)}`);
+        }
+        await win.webContents.executeJavaScript("window.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, ctrlKey: true, cancelable: true }))");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const [shrunkWidth] = win.getContentSize();
+        if (shrunkWidth >= restoredWidth) throw new Error('card could not be resized after returning from the orb');
+        applyScale(expectedScale);
+        portraitScale = expectedPortraitScale;
+        persistPortraitScale(portraitScale);
+        await new Promise((resolve) => setTimeout(resolve, 900));
         console.log(`[quota-weather] full app smoke passed on ${process.platform}/${process.arch}`);
         setTimeout(quitAll, 100);
       }).catch((error) => {
@@ -174,14 +253,19 @@ function createWindow() {
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
   win.on('resize', () => {
-    // The compact portrait/orb modes are temporary window shapes, not card resizes.
-    // Persisting their tiny width would clamp and overwrite the card scale.
-    if (!win || viewMode !== 'card') return;
+    if (!win || viewMode === 'orb' || Date.now() < suppressResizeSyncUntil) return;
     const [cw] = win.getContentSize();
-    scale = clampScale(cw / OUTER_W);
-    win.webContents.setZoomFactor(scale);
-    if (win.webContents) win.webContents.send('quota:scale-state', scale);
-    persistScale(scale);
+    if (viewMode === 'mini') {
+      portraitScale = clampPortraitScale(cw / MINI_BASE_W);
+      win.webContents.setZoomFactor(portraitScale);
+      if (win.webContents) win.webContents.send('quota:scale-state', portraitScale);
+      persistPortraitScale(portraitScale);
+    } else {
+      scale = clampScale(cw / OUTER_W);
+      win.webContents.setZoomFactor(scale);
+      if (win.webContents) win.webContents.send('quota:scale-state', scale);
+      persistScale(scale);
+    }
   });
   win.on('move', () => persistWindowPosition());
 
@@ -213,8 +297,23 @@ function togglePanel() {
 
 function windowSizeForView(mode) {
   if (mode === 'orb') return { w: ORB, h: ORB };
-  if (mode === 'mini') return { w: MINI_W, h: MINI_H };
+  if (mode === 'mini') return portraitSizeFor(portraitScale);
   return outerSizeFor(scale); // card
+}
+
+function applyViewConstraints(aspectRatio, minimum, maximum, resizable) {
+  // Electron/Windows can reject a new minimum while the previous view still has
+  // a smaller maximum (the orb is fixed at 128x128). Reset both limits in a safe
+  // order before applying the next view's constraints.
+  suppressResizeSync(400);
+  win.setResizable(true);
+  win.setAspectRatio(0);
+  win.setMinimumSize(1, 1);
+  win.setMaximumSize(10000, 10000);
+  win.setAspectRatio(aspectRatio);
+  win.setMaximumSize(maximum.w, maximum.h);
+  win.setMinimumSize(minimum.w, minimum.h);
+  win.setResizable(resizable);
 }
 
 function setView(mode) {
@@ -228,28 +327,34 @@ function setView(mode) {
   if (mode === 'card') {
     const mn = outerSizeFor(cfg.minScale || 0.5);
     const mx = outerSizeFor(cfg.maxScale || 1.4);
-    win.setMinimumSize(mn.w, mn.h);
-    win.setMaximumSize(mx.w, mx.h);
-    win.setResizable(true);
+    applyViewConstraints(OUTER_W / OUTER_H, mn, mx, true);
     const b = cardBounds || (() => {
       const s = outerSizeFor(scale);
       return { x: area.width - s.w - 20, y: area.height - s.h - 20, width: s.w, height: s.h };
     })();
+    suppressResizeSync();
     win.setBounds(b);
     win.webContents.setZoomFactor(scale);
   } else {
-    // compact modes: fixed size, docked near the card while staying fully on-screen
+    // Compact modes dock near the card while staying fully on-screen. Portrait
+    // mode starts at half width/height (one quarter the previous area), but is
+    // independently resizable; the orb remains fixed-size.
     const { w, h } = windowSizeForView(mode);
     const base = cardBounds || win.getBounds();
     const display = screen.getDisplayNearestPoint({ x: base.x, y: base.y });
     const workArea = display.workArea;
     const ox = Math.min(workArea.x + workArea.width - w - 12, Math.max(workArea.x + 12, base.x + base.width - w - 12));
     const oy = Math.min(workArea.y + workArea.height - h - 12, Math.max(workArea.y + 12, base.y + 12));
-    win.setResizable(false);
-    win.setMinimumSize(w, h);
-    win.setMaximumSize(w, h);
+    if (mode === 'mini') {
+      const mn = portraitSizeFor(cfg.minPortraitScale == null ? 0.35 : cfg.minPortraitScale);
+      const mx = portraitSizeFor(cfg.maxPortraitScale == null ? 1.25 : cfg.maxPortraitScale);
+      applyViewConstraints(MINI_BASE_W / MINI_BASE_H, mn, mx, true);
+    } else {
+      applyViewConstraints(1, { w, h }, { w, h }, false);
+    }
+    suppressResizeSync();
     win.setBounds({ x: Math.round(ox), y: Math.round(oy), width: w, height: h });
-    win.webContents.setZoomFactor(1);
+    win.webContents.setZoomFactor(mode === 'mini' ? portraitScale : 1);
   }
   if (win.webContents) win.webContents.send('quota:view', mode);
   updateTrayMenu();
@@ -268,12 +373,21 @@ function restoreFromOrb() { setView('card'); }
 // ---- scale persistence ----------------------------------------------------
 
 let persistTimer = null;
+let persistPortraitTimer = null;
 let persistWindowTimer = null;
 function persistScale(s) {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     try {
       cfg = updateConfig({ scale: Number(s.toFixed(3)) });
+    } catch (_) { /* best effort */ }
+  }, 700);
+}
+function persistPortraitScale(s) {
+  clearTimeout(persistPortraitTimer);
+  persistPortraitTimer = setTimeout(() => {
+    try {
+      cfg = updateConfig({ portraitScale: Number(s.toFixed(3)) });
     } catch (_) { /* best effort */ }
   }, 700);
 }
@@ -299,13 +413,21 @@ function persistWeatherSwitchInterval(ms) {
 }
 
 function applyScale(next) {
-  if (!win) return;
-  const s = clampScale(next);
+  if (!win || viewMode === 'orb') return;
+  const portrait = viewMode === 'mini';
+  const s = portrait ? clampPortraitScale(next) : clampScale(next);
   const b = win.getContentBounds();
   const cx = b.x + b.width / 2;
   const cy = b.y + b.height / 2;
-  const { w, h } = outerSizeFor(s);
+  const { w, h } = portrait ? portraitSizeFor(s) : outerSizeFor(s);
+  if (portrait) portraitScale = s;
+  else scale = s;
+  suppressResizeSync();
   win.setContentBounds({ x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), width: w, height: h });
+  win.webContents.setZoomFactor(s);
+  if (win.webContents) win.webContents.send('quota:scale-state', s);
+  if (portrait) persistPortraitScale(s);
+  else persistScale(s);
 }
 
 // ---- watchdog: follow Codex Desktop / CLI (no admin, cheap polling) --------
@@ -476,8 +598,8 @@ ipcMain.on('quota:toggle-pin', () => {
   if (win.webContents) win.webContents.send('quota:pin-state', next);
 });
 ipcMain.handle('quota:get-pin', () => (win ? win.isAlwaysOnTop() : false));
-ipcMain.on('quota:scale', (_e, delta) => applyScale(scale + delta));
-ipcMain.handle('quota:get-scale', () => scale);
+ipcMain.on('quota:scale', (_e, delta) => applyScale((viewMode === 'mini' ? portraitScale : scale) + delta));
+ipcMain.handle('quota:get-scale', () => (viewMode === 'mini' ? portraitScale : scale));
 ipcMain.on('quota:minimize', () => minimizeToOrb());
 ipcMain.on('quota:restore', () => restoreFromOrb());
 ipcMain.on('quota:cycle-view', () => cycleView());
@@ -556,18 +678,24 @@ function resizeTick() {
   let wantH = null;
   if (/[ns]/.test(dir)) wantH = dy;
 
-  // convert to a scale; for corners use the axis that yields the larger scale
+  // Convert to a scale; portrait mode uses its own base dimensions and range.
+  const portrait = viewMode === 'mini';
+  if (viewMode === 'orb') return;
+  const baseW = portrait ? MINI_BASE_W : OUTER_W;
+  const baseH = portrait ? MINI_BASE_H : OUTER_H;
   const candidates = [];
-  if (wantW != null) candidates.push(wantW / OUTER_W);
-  if (wantH != null) candidates.push(wantH / OUTER_H);
+  if (wantW != null) candidates.push(wantW / baseW);
+  if (wantH != null) candidates.push(wantH / baseH);
   if (!candidates.length) return;
-  const s = clampScale(Math.max(...candidates));
-  scale = s;
-  const { w, h } = outerSizeFor(s);
+  const s = portrait ? clampPortraitScale(Math.max(...candidates)) : clampScale(Math.max(...candidates));
+  if (portrait) portraitScale = s;
+  else scale = s;
+  const { w, h } = portrait ? portraitSizeFor(s) : outerSizeFor(s);
 
   // keep the anchor corner/edge fixed
   const nx = /w/.test(dir) ? anchor.x - w : anchor.x;
   const ny = /n/.test(dir) ? anchor.y - h : anchor.y;
+  suppressResizeSync();
   win.setContentBounds({ x: Math.round(nx), y: Math.round(ny), width: w, height: h });
   win.webContents.setZoomFactor(s);
   if (win.webContents) win.webContents.send('quota:scale-state', s);
@@ -576,7 +704,8 @@ function resizeTick() {
 ipcMain.on('quota:resize-end', () => {
   if (resizeTimer) { clearInterval(resizeTimer); resizeTimer = null; }
   resizeState = null;
-  persistScale(scale);
+  if (viewMode === 'mini') persistPortraitScale(portraitScale);
+  else persistScale(scale);
 });
 
 // ---- lifecycle ------------------------------------------------------------

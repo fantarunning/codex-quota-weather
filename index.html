@@ -33,7 +33,7 @@
         #orb, #mini { display: none; }
         body.view-card #quota-app-container { display: block; }
         body.view-card #orb, body.view-card #mini { display: none; }
-        body.view-mini #orb, body.view-mini .rz { display: none; }
+        body.view-mini #orb { display: none; }
         body.view-mini #quota-app-container {
             display: block; position: fixed; inset: 0; width: auto; height: auto; z-index: 0;
             border-radius: 30px; opacity: 1; animation: none;
@@ -100,6 +100,7 @@
                 radial-gradient(circle at 50% 28%, rgba(255,255,255,0.10), rgba(0,0,0,0) 38%);
         }
         #mini .mini-top { display: flex; align-items: center; justify-content: center; gap: 8px; height: 28px; text-shadow: 0 2px 10px rgba(0,0,0,0.82); }
+        #mini .mini-top { cursor: pointer; -webkit-app-region: no-drag; }
         #mini .mini-brand { font-size: 22px; line-height: 1; font-weight: 820; letter-spacing: -0.55px; }
         #mini-live-dot {
             width: 9px; height: 9px; border-radius: 50%; background: #4ADE80;
@@ -108,7 +109,7 @@
         #mini-live-dot.offline { background: #F87171; box-shadow: 0 0 10px rgba(248,113,113,0.9); animation: none; }
         #mini .mini-ring {
             position: relative; width: 166px; height: 166px; margin-top: 24px;
-            display: flex; align-items: center; justify-content: center;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-app-region: no-drag;
         }
         #mini .mini-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
         #mini-ring-fg { filter: drop-shadow(0 0 8px var(--mini-accent, rgba(90,148,232,0.62))); }
@@ -120,9 +121,20 @@
         #mini .mini-metric-label { font-size: 11px; font-weight: 700; letter-spacing: 1.15px; color: rgba(255,255,255,0.70); }
         #mini .mini-metric-value { font-size: 27px; line-height: 1; font-weight: 820; font-variant-numeric: tabular-nums; letter-spacing: -0.4px; }
         #mini .mini-divider { width: 48px; height: 1px; margin: 30px 0 27px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.48), transparent); }
-        #mini .mini-mode-dots { margin-top: auto; display: flex; gap: 7px; opacity: 0.58; }
-        #mini .mini-mode-dots span { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.34); }
-        #mini .mini-mode-dots span:first-child { width: 12px; border-radius: 999px; background: rgba(255,255,255,0.76); }
+        #mini .mini-mode-dots {
+            margin-top: auto; margin-bottom: -14px; padding: 16px 24px 14px;
+            display: flex; justify-content: center; gap: 7px; opacity: 0.62;
+            border-radius: 999px; cursor: pointer; -webkit-app-region: no-drag;
+            transition: opacity 0.2s ease, background 0.2s ease;
+        }
+        #mini .mini-mode-dots:hover, #mini .mini-mode-dots:focus-visible { opacity: 1; background: rgba(255,255,255,0.08); outline: none; }
+        #mini .mini-mode-dots span { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.34); transition: width 0.25s ease, background 0.25s ease; }
+        #mini .mini-mode-dots span.active { width: 12px; border-radius: 999px; background: rgba(255,255,255,0.86); }
+
+        /* At the default 0.5 zoom these remain 10-12 physical pixels wide. */
+        .view-mini .rz-n, .view-mini .rz-s { height: 20px; }
+        .view-mini .rz-e, .view-mini .rz-w { width: 20px; }
+        .view-mini .rz-ne, .view-mini .rz-nw, .view-mini .rz-se, .view-mini .rz-sw { width: 24px; height: 24px; }
 
         #quota-app-container {
             position: relative; width: 680px; height: 380px; border-radius: 24px; overflow: hidden;
@@ -195,6 +207,7 @@
         .metric-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
 
         .header-title { margin: 0; font-size: 26px; font-weight: 800; text-shadow: 0 2px 10px rgba(0,0,0,0.8); letter-spacing: -0.5px; animation: fadeUpIn 0.8s 0.1s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        .layout-switch { cursor: pointer; -webkit-app-region: no-drag; }
 
         .theme-pill {
             padding: 7px 16px; border-radius: 30px; background: rgba(0,0,0,0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -273,7 +286,7 @@
         .update-version button:hover { background: rgba(255,255,255,0.22); }
         /* interactive controls must opt out of the body drag region, or the drag
            swallows their clicks. */
-        .win-btn, #win-controls, #btn-lang, #click-zone, #ring-mode-label, #bg-changer, .theme-pill, #update-popover { -webkit-app-region: no-drag; }
+        .win-btn, #win-controls, #btn-lang, #click-zone, #ring-mode-label, #bg-changer, .theme-pill, #update-popover, .layout-switch, #mini .mini-top, #mini .mini-ring, #mini-bg-switcher { -webkit-app-region: no-drag; }
     </style>
 </head>
 <body class="view-card">
@@ -289,11 +302,11 @@
 
     <!-- ==== PORTRAIT MINI CARD — shown in 'mini' view ==== -->
     <div id="mini" onmousedown="compactDown(event)">
-        <div class="mini-top">
+        <div class="mini-top" onclick="cycleLayout(event)" onmousedown="event.stopPropagation()">
             <span class="mini-brand">Codex</span>
             <span id="mini-live-dot"></span>
         </div>
-        <div class="mini-ring">
+        <div class="mini-ring" onclick="miniToggleWeather(event)" onmousedown="event.stopPropagation()">
             <svg viewBox="0 0 166 166">
                 <circle cx="83" cy="83" r="64" fill="none" stroke="rgba(255,255,255,0.11)" stroke-width="10"></circle>
                 <circle id="mini-ring-fg" cx="83" cy="83" r="64" fill="none" stroke="#5A94E8" stroke-width="10"
@@ -316,7 +329,10 @@
                 <strong class="mini-metric-value" id="mini-calls">--</strong>
             </div>
         </div>
-        <div class="mini-mode-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div id="mini-bg-switcher" class="mini-mode-dots" role="button" tabindex="0"
+             onclick="changeBgInTheme(event)" onmousedown="event.stopPropagation()" onkeydown="miniBackgroundKey(event)">
+            <span></span><span></span><span></span>
+        </div>
     </div>
 
     <!-- ==== CRYSTAL BALL — shown in 'orb' view ==== -->
@@ -344,7 +360,7 @@
         <div class="content">
             <div id="drag-region" style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div style="display: flex; align-items: center; gap: 16px;">
-                    <h2 class="header-title" data-i18n="title">Codex 额度</h2>
+                    <h2 class="header-title layout-switch" data-i18n="title" onclick="cycleLayout(event)">Codex 额度</h2>
                     <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.9); animation: fadeUpIn 0.8s 0.15s cubic-bezier(0.16, 1, 0.3, 1) backwards;">
                         <div id="live-dot" style="width: 10px; height: 10px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 12px #4ADE80; animation: pulse 2s infinite;"></div>
                         <span id="live-text">Live</span>
@@ -515,6 +531,7 @@
             document.getElementById('bg-active').style.backgroundImage = "url('" + src + "')";
             document.getElementById('theme-name').innerText = themes[currentIdx].name;
             document.getElementById('progress-ring').style.stroke = themes[currentIdx].color;
+            updateMiniBackgroundDots();
         }).catch((error) => console.error(error));
 
         // =====================================================================
@@ -528,6 +545,7 @@
                 plan_plus: 'Plus 套餐', plan_pro: 'Pro 套餐', plan_team: 'Team 套餐', plan_free: '免费版', plan_unknown: '未知套餐',
                 tip_ring: '周额度（来自 ChatGPT 账户）', tip_weather: '点击圆环：切换天气',
                 tip_bg: '点击更换该天气的背景图', tip_lang: '中文 / English',
+                tip_layout: '点击切换横版 / 竖版 / 悬浮球', tip_mini: '点击圆环切换天气；点击下方圆点或滚轮切换背景',
                 tip_pin_on: '已置顶（点击取消）', tip_pin_off: '点击置顶', tip_close: '隐藏浮窗（托盘图标可重开）',
                 age_prefix: '更新于 ', age_now: '刚刚', age_min: ' 分钟前', age_hr: ' 小时前', age_day: ' 天前', live_badge: '● 实时', refreshing: '刷新中…',
                 update_title: '版本与更新', update_reading: '正在读取版本信息…', update_check: '检查更新',
@@ -546,6 +564,7 @@
                 plan_plus: 'Plus plan', plan_pro: 'Pro plan', plan_team: 'Team plan', plan_free: 'Free', plan_unknown: 'Unknown plan',
                 tip_ring: 'Account weekly quota (from ChatGPT account)', tip_weather: 'Click ring: switch weather',
                 tip_bg: 'Click to change this weather\'s background', tip_lang: '中文 / English',
+                tip_layout: 'Switch card / portrait / orb', tip_mini: 'Click the ring to change weather; click the bottom dots or scroll to change background',
                 tip_pin_on: 'Pinned (click to unpin)', tip_pin_off: 'Click to pin on top', tip_close: 'Hide panel (reopen from tray)',
                 age_prefix: 'updated ', age_now: 'just now', age_min: 'm ago', age_hr: 'h ago', age_day: 'd ago', live_badge: '● LIVE', refreshing: 'refreshing…',
                 update_title: 'Version & updates', update_reading: 'Reading version information…', update_check: 'Check for updates',
@@ -583,6 +602,11 @@
             setTip('btn-lang', 'tip_lang');
             setTip('btn-close', 'tip_close');
             setTip('btn-update', 'update_title');
+            setTip('mini', 'tip_mini');
+            setTip('mini-bg-switcher', 'tip_bg');
+            const miniBgSwitcher = document.getElementById('mini-bg-switcher');
+            if (miniBgSwitcher) miniBgSwitcher.setAttribute('aria-label', t('tip_bg'));
+            document.querySelectorAll('.layout-switch, #mini .mini-top').forEach((el) => { el.title = t('tip_layout'); });
             const bg = document.getElementById('bg-changer'); if (bg) bg.title = t('tip_bg');
             const updateTitle = document.getElementById('update-title'); if (updateTitle) updateTitle.textContent = t('update_title');
             renderUpdateState(currentUpdateState);
@@ -840,16 +864,22 @@
         let pinned = true;
         function shellClose(e) { if (e) e.stopPropagation(); if (SHELL) SHELL.close(); }
         function shellMinimize(e) { if (e) e.stopPropagation(); if (SHELL && SHELL.cycleView) SHELL.cycleView(); }
+        function cycleLayout(e) { if (e) e.stopPropagation(); if (SHELL && SHELL.cycleView) SHELL.cycleView(); }
+        function miniToggleWeather(e) { if (e) e.stopPropagation(); toggleWeather(); }
+        function miniBackgroundKey(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            changeBgInTheme(e);
+        }
         function shellTogglePin(e) {
             if (e) e.stopPropagation();
             if (SHELL) SHELL.togglePin();
         }
-        // Compact-view interaction (orb + mini card): drag to move, a plain click
-        // (no drag) cycles to the next view. Used by both #orb and #mini.
+        // Compact views drag to move. Only a plain orb click cycles back to card;
+        // portrait layout switching is intentionally limited to its Codex title.
         let compactMoved = false;
         function compactDown(e) {
             if (e.button !== 0) return;
-            // let interactive children (none yet) opt out; otherwise start drag
+            // Interactive portrait controls stop propagation before this handler.
             e.preventDefault();
             compactMoved = false;
             const sx = e.screenX, sy = e.screenY;
@@ -861,8 +891,8 @@
                 if (SHELL && SHELL.orbDragEnd) SHELL.orbDragEnd();
                 window.removeEventListener('mousemove', move);
                 window.removeEventListener('mouseup', up);
-                // a click (no drag) advances to the next view (mini→orb→card)
-                if (!compactMoved && SHELL && SHELL.cycleView) SHELL.cycleView();
+                // The orb itself remains the large click target for returning to card.
+                if (!compactMoved && document.body.classList.contains('view-orb') && SHELL && SHELL.cycleView) SHELL.cycleView();
             };
             window.addEventListener('mousemove', move);
             window.addEventListener('mouseup', up);
@@ -1064,13 +1094,21 @@
             if (SHELL.onUpdateStatus) SHELL.onUpdateStatus(renderUpdateState);
             if (SHELL.getUpdateStatus) SHELL.getUpdateStatus().then(renderUpdateState).catch(() => {});
 
-            // ctrl/cmd + wheel to zoom (fine adjustment; edge-drag is the main way)
-            window.addEventListener('wheel', (ev) => {
-                if (!ev.ctrlKey && !ev.metaKey) return;
-                ev.preventDefault();
-                if (SHELL.scaleBy) SHELL.scaleBy(ev.deltaY < 0 ? 0.05 : -0.05);
-            }, { passive: false });
         }
+
+        let miniWheelAt = 0;
+        window.addEventListener('wheel', (ev) => {
+            if (document.body.classList.contains('view-mini') && !ev.ctrlKey && !ev.metaKey) {
+                ev.preventDefault();
+                if (Math.abs(ev.deltaY) < 4 || Date.now() - miniWheelAt < 360) return;
+                miniWheelAt = Date.now();
+                changeBgInTheme(ev, ev.deltaY < 0 ? -1 : 1);
+                return;
+            }
+            if (!ev.ctrlKey && !ev.metaKey) return;
+            ev.preventDefault();
+            if (SHELL && SHELL.scaleBy) SHELL.scaleBy(ev.deltaY < 0 ? 0.05 : -0.05);
+        }, { passive: false });
 
         async function poll() {
             try {
@@ -1131,6 +1169,13 @@
         let transitionRunning = false;
         let pendingTransition = null;
 
+        function updateMiniBackgroundDots() {
+            const active = bgIndices[currentIdx] || 0;
+            document.querySelectorAll('.mini-mode-dots span').forEach((dot, index) => {
+                dot.classList.toggle('active', index === active);
+            });
+        }
+
         async function performTransition(targetThemeIdx, targetBgIdx) {
             const th = themes[targetThemeIdx];
             const normalizedBgIdx = ((targetBgIdx % th.urls.length) + th.urls.length) % th.urls.length;
@@ -1157,6 +1202,7 @@
 
             currentIdx = targetThemeIdx;
             bgIndices[targetThemeIdx] = normalizedBgIdx;
+            updateMiniBackgroundDots();
             appContainer.dataset.theme = th.id;
             resetParticles();
             if (lastData) updateOrb(lastData);
@@ -1205,9 +1251,14 @@
             }
         }
 
-        function changeBgInTheme(event) {
-            if(event) event.stopPropagation();
-            const targetBgIdx = (bgIndices[currentIdx] + 1) % themes[currentIdx].urls.length;
+        function changeBgInTheme(event, step) {
+            if (event) {
+                event.stopPropagation();
+                if (event.cancelable) event.preventDefault();
+            }
+            const direction = step < 0 ? -1 : 1;
+            const count = themes[currentIdx].urls.length;
+            const targetBgIdx = (bgIndices[currentIdx] + direction + count) % count;
             updateUIWithSmoothTransition(currentIdx, targetBgIdx);
             if (window.quotaShell && window.quotaShell.weatherInteracted) {
                 window.quotaShell.weatherInteracted();

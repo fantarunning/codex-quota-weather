@@ -51,6 +51,9 @@ async function main() {
   );
   const defaults = defaultConfig();
   assert.strictEqual(defaults.scale, 0.696);
+  assert.strictEqual(defaults.portraitScale, 0.5);
+  assert.strictEqual(defaults.minPortraitScale, 0.35);
+  assert.strictEqual(defaults.maxPortraitScale, 1.25);
   assert.strictEqual(defaults.windowX, 1213);
   assert.strictEqual(defaults.windowY, 647);
   assert.strictEqual(defaults.skippedUpdateVersion, null);
@@ -84,6 +87,10 @@ async function main() {
   assert(html.includes('id="update-skip"'), "renderer skip-update action is missing");
   assert(html.includes('id="mini-calls"'), "portrait mini metrics are incomplete");
   assert(html.includes("mode === 'mini' ? { width: 240, height: 520 }"), "portrait weather viewport is missing");
+  assert(html.includes('onclick="miniToggleWeather(event)"'), "portrait weather switch is missing");
+  assert(html.includes('onclick="cycleLayout(event)"'), "Codex layout switch is missing");
+  assert(html.includes('id="mini-bg-switcher"'), "portrait background switcher is missing");
+  assert(html.includes('onclick="changeBgInTheme(event)"'), "portrait background click action is missing");
   const mainSource = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
   assert(mainSource.includes("quota:skip-update"), "skip-update IPC handler is missing");
   assert(!mainSource.includes("版本与更新 / Version & updates"), "tray still contains the version/update menu");

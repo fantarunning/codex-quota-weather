@@ -120,6 +120,34 @@ async function main() {
     assert.strictEqual(miniState.percent.trim(), "86%");
     assert.strictEqual(miniState.used.trim(), "20.08M");
     assert.strictEqual(miniState.calls.trim(), "188");
+
+    await win.webContents.executeJavaScript("document.querySelector('#mini .mini-ring').click()");
+    await wait(700);
+    const clickedTheme = await win.webContents.executeJavaScript(
+      "document.getElementById('quota-app-container').dataset.theme"
+    );
+    assert.strictEqual(clickedTheme, "beach", "portrait ring click did not switch weather");
+
+    await win.webContents.executeJavaScript(
+      "window.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true }))"
+    );
+    await wait(700);
+    const scrolledBackground = await win.webContents.executeJavaScript(`({
+      background: document.getElementById('bg-active').style.backgroundImage,
+      activeDot: Array.from(document.querySelectorAll('.mini-mode-dots span')).findIndex((dot) => dot.classList.contains('active'))
+    })`);
+    assert(scrolledBackground.background.includes("beach-1.jpg"), "portrait wheel did not switch background");
+    assert.strictEqual(scrolledBackground.activeDot, 1, "portrait background indicator did not follow the wheel");
+
+    await win.webContents.executeJavaScript("document.getElementById('mini-bg-switcher').click()");
+    await wait(700);
+    const clickedBackground = await win.webContents.executeJavaScript(`({
+      background: document.getElementById('bg-active').style.backgroundImage,
+      activeDot: Array.from(document.querySelectorAll('.mini-mode-dots span')).findIndex((dot) => dot.classList.contains('active'))
+    })`);
+    assert(clickedBackground.background.includes("beach-2.jpg"), "portrait bottom dots did not switch background");
+    assert.strictEqual(clickedBackground.activeDot, 2, "portrait bottom dots did not update the indicator");
+
     const portraitThemes = ["rain", "meteor", "blossom", "snow", "beach"];
     for (let themeIndex = 0; themeIndex < portraitThemes.length; themeIndex += 1) {
       const themeState = await win.webContents.executeJavaScript(`(async () => {

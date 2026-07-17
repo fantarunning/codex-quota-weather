@@ -19,7 +19,7 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 - Rotates weather automatically; choose off, 1, 5, 10, or 30 minutes from the tray.
 - Follows Codex Desktop (`ChatGPT` / `ChatGPT.exe`) and Codex CLI (`Codex` / `Codex.exe`).
 - Supports Windows 10/11, Apple Silicon Macs, and Intel Macs.
-- Supports pinning, resizing, a compact floating orb, Chinese/English, and reduced motion.
+- Supports a landscape card, a full-weather portrait card, a compact floating orb, pinning, resizing, Chinese/English, and reduced motion. The portrait design uses a `240 × 520` base layout and initially opens at `120 × 260` (one quarter of the base area).
 - Supports in-panel updates, tray-based version rollback, and automatic recovery from a failed update.
 - Processes data locally and binds its HTTP service only to `127.0.0.1`.
 
@@ -137,12 +137,16 @@ npm run setup:electron
 | Click the weather name | Change the current scene's background |
 | Click `中 / EN` | Switch language |
 | Click the download icon | Check/download updates, restart, or select a historical version |
-| Click `−` | Collapse to a weekly-quota orb |
+| Click the landscape “Codex Quota” title or `−` | Switch to portrait layout |
+| Click “Codex ●” in portrait layout | Switch to the orb; click the orb to return to landscape |
+| Click the portrait ring | Switch to the next weather scene, just like the landscape ring |
+| Click the bottom dots / scroll in portrait layout | Switch among the current weather's three backgrounds; the dots track the active image |
+| Drag portrait empty space or the orb | Move the compact window |
 | Click the bell | Toggle always-on-top |
 | Click `×` | Hide the panel but keep the tray app running |
 | Left-click the tray/menu bar icon | Show or hide the panel |
 | Right-click the tray/menu bar icon | Configure following, weather, update/rollback, or quit |
-| `Ctrl + wheel` / drag an edge | Resize the panel |
+| `Ctrl + wheel` / drag an edge | Resize landscape or portrait; each layout remembers its own scale |
 
 ## What the numbers mean
 
@@ -177,14 +181,16 @@ The first run creates `%APPDATA%\CodexQuotaWeather\config.json` on Windows or
 `~/Library/Application Support/CodexQuotaWeather/config.json` on macOS.
 
 Important fields include `port`, `refreshMs`, `liveUsageMs`, `lang`, `scale`,
+`portraitScale`, `minPortraitScale`, `maxPortraitScale`,
 `windowX`, `windowY`, `defaultTheme`, `defaultBackgroundIndex`, `followCodex`,
 `watchProcesses`, and `weatherSwitchIntervalMs`. [config.example.json](config.example.json)
 contains the public default size and position; positions saved while running remain
 in the per-user configuration only.
 
-The current first-run panel defaults are scale `0.696`, position `1213,647`, and
-an approximate content size of `473 × 264`. Smaller displays clamp the position
-into the visible work area.
+The current first-run landscape defaults are scale `0.696`, position `1213,647`,
+and an approximate content size of `473 × 264`. Portrait scale defaults to `0.5`,
+so its `240 × 520` base layout opens at `120 × 260`; its range is `0.35` to `1.25`.
+Smaller displays clamp the position into the visible work area.
 
 ## Privacy and security
 
