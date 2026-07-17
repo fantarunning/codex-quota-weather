@@ -123,6 +123,41 @@ EOF
   chmod 600 "$PLIST"
 }
 
+configured_port() {
+  "$NODE" - "$INSTALL_DIR/config.json" <<'NODEPORT'
+const fs = require('fs');
+const file = process.argv[2];
+let port = 8787;
+try {
+  const configured = Number(JSON.parse(fs.readFileSync(file, 'utf8')).port);
+  if (Number.isInteger(configured) && configured > 0 && configured <= 65535) port = configured;
+} catch {}
+process.stdout.write(String(port));
+NODEPORT
+}
+
+wait_for_local_panel() {
+  PORT=$1
+  TIMEOUT_SECONDS=${2:-30}
+  DEADLINE=$(($(date +%s) + TIMEOUT_SECONDS))
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    HEALTH=$(curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" 2>/dev/null || true)
+    if printf '%s' "$HEALTH" | "$NODE" -e '
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk) => { input += chunk; });
+      process.stdin.on("end", () => {
+        try { process.exit(JSON.parse(input).ok === true ? 0 : 1); }
+        catch { process.exit(1); }
+      });
+    '; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
 resolve_source
 step "Installing Codex Quota Weather to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" "$VERSIONS_DIR" "$LAUNCHER_DIR" "$STATE_DIR"
@@ -224,9 +259,26 @@ if [ "$NO_LAUNCH" != "1" ]; then
     launchctl bootstrap "gui/$(id -u)" "$PLIST"
     launchctl kickstart -k "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   fi
+
+  HEALTH_PORT=$(configured_port)
+  step "Waiting for the local panel to become ready"
+  if ! wait_for_local_panel "$HEALTH_PORT"; then
+    printf 'The panel did not start within 30 seconds.\n' >&2
+    printf 'Launcher log: %s\n' "$INSTALL_DIR/logs/launcher.log" >&2
+    printf 'macOS log: %s\n' "$HOME/Library/Logs/CodexQuotaWeather.log" >&2
+    exit 1
+  fi
+
+  # A second launch reaches Electron's single-instance handler and explicitly
+  # shows the already healthy panel, independent of process-name detection.
+  "$LAUNCHER_DIR/start-macos.sh"
 fi
 
-printf '\n\033[32mCodex Quota Weather v%s is installed and verified.\033[0m\n' "$VERSION"
+if [ "$NO_LAUNCH" != "1" ]; then
+  printf '\n\033[32mCodex Quota Weather v%s is installed, verified, and the panel has been opened.\033[0m\n' "$VERSION"
+else
+  printf '\n\033[32mCodex Quota Weather v%s is installed and verified.\033[0m\n' "$VERSION"
+fi
 printf 'Install path: %s\n' "$INSTALL_DIR"
 printf 'Active version: %s\n' "$VERSION_DIR"
 printf 'User settings: %s\n' "$INSTALL_DIR/config.json"

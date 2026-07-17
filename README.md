@@ -57,6 +57,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/f
 curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install-macos.sh | bash
 ```
 
+首次安装通常需要 1–3 分钟，请保持“终端”窗口打开。macOS 安装器会显示进度、等待本地健康检查，成功后再通过单实例唤醒主动打开悬浮窗；启动失败时会直接给出日志路径。
+
 两个安装器都无需管理员权限，也不要求电脑预先安装 Node.js。它们会：
 
 1. 下载最新源码；
@@ -64,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 3. 校验 Node.js 下载文件的 SHA-256；
 4. 安装依赖并执行烟雾测试；
 5. 创建 Windows Startup 或 macOS LaunchAgent 开机启动项；
-6. 启动悬浮窗，并保留最近 5 个可回退版本。
+6. 启动并验证本地服务，主动打开悬浮窗，并保留最近 5 个可回退版本。
 
 | 平台 | 应用目录 | 个人设置 |
 | --- | --- | --- |
@@ -239,6 +241,13 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 - 新版安装器会立即显示开始提示，并在结束前确认本地面板已经启动。
 - 如果明确显示失败，请保留窗口中的错误信息，并查看 `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`。
 - 默认端口可用 `curl http://127.0.0.1:8787/health` 检查；返回 `{"ok":true,...}` 表示后台已正常运行。
+
+### macOS 安装后没有出现悬浮窗
+
+- 当前安装器会等待本地服务就绪，并再次调用固定启动器来主动显示悬浮窗；请等到终端出现 `the panel has been opened`。
+- 默认端口可用 `curl http://127.0.0.1:8787/health` 检查；如果修改过 `config.json` 的 `port`，请使用修改后的端口。
+- 启动失败时查看 `~/Library/Application Support/CodexQuotaWeather/logs/launcher.log` 和 `~/Library/Logs/CodexQuotaWeather.log`。
+- 修复安装器后无需先卸载，重新执行上方同一条 macOS 一行安装命令即可。
 
 ### 周额度显示离线或长时间不更新
 

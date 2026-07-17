@@ -53,9 +53,11 @@ Run in Terminal:
 curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install-macos.sh | bash
 ```
 
+A first install normally takes 1–3 minutes; keep Terminal open. The macOS installer reports progress, waits for the local health endpoint, and then explicitly opens the panel through Electron's single-instance handler. If startup fails, it prints the relevant log paths.
+
 Neither installer requires administrator access or a preinstalled Node.js. It installs
 a private Node.js 24 runtime, a stable launcher, Electron, and versioned application
-directories. It verifies downloads, runs the smoke test, enables login startup, and launches the panel.
+directories. It verifies downloads, runs the smoke test, enables login startup, verifies the local service, and launches the panel.
 
 | Platform | Application | User settings |
 | --- | --- | --- |
@@ -204,6 +206,13 @@ See [SECURITY.md](SECURITY.md).
 ### The CMD installer appears to do nothing
 
 The first install downloads roughly 150 MB of Electron and normally takes 1–3 minutes. Keep the window open until it says `Installation finished successfully`. The current installer prints an immediate start message, verifies the local health endpoint before reporting success, and explicitly opens the panel. On failure, preserve the terminal output and inspect `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`. The default health check is `curl http://127.0.0.1:8787/health`.
+
+### The panel does not appear after macOS installation
+
+- The installer waits for the local service and invokes the stable launcher a second time to explicitly show the panel. Keep Terminal open until it reports `the panel has been opened`.
+- Check the default endpoint with `curl http://127.0.0.1:8787/health`. If `port` was changed in `config.json`, use that port instead.
+- Inspect `~/Library/Application Support/CodexQuotaWeather/logs/launcher.log` and `~/Library/Logs/CodexQuotaWeather.log` after a startup failure.
+- There is no need to uninstall first; rerun the same macOS one-command installer after an installer fix.
 
 ### Weekly quota is offline or stale
 
