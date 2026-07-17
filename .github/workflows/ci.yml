@@ -43,7 +43,15 @@ jobs:
           if ($installedPackage.version -ne $sourcePackage.version) {
             throw "Installed $($installedPackage.version), expected $($sourcePackage.version)"
           }
-          $health = Invoke-RestMethod 'http://127.0.0.1:8787/health'
+          $health = $null
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            try {
+              $health = Invoke-RestMethod 'http://127.0.0.1:8787/health' -TimeoutSec 2
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          } while (-not $health -and (Get-Date) -lt $deadline)
           if (-not $health.ok) { throw 'Installed panel health check failed' }
           & .\uninstall.ps1
           Start-Sleep -Seconds 5
