@@ -125,10 +125,14 @@ npm run setup:electron
 | UI | Meaning | Source |
 | --- | --- | --- |
 | Ring | Weekly account quota remaining | ChatGPT usage endpoint, with session fallback |
-| Used Today | Tokens accumulated in today's Codex sessions | `~/.codex/sessions` |
+| Used Today | Cumulative token growth produced today | `~/.codex/sessions` |
 | Context subline | Latest call tokens / model context window | Latest Codex session |
 | Calls Today | Token events recorded today | `~/.codex/sessions` |
 | Sessions | Codex sessions active today | `~/.codex/sessions` |
+
+The three daily metrics split records at local midnight using each event timestamp.
+An overnight session therefore contributes only today's new tokens, calls, and activity,
+without counting yesterday's usage again.
 
 The ring uses a **remaining** percentage. If Codex says “26% used,” this app says
 “74% remaining”; both represent the same quota snapshot.

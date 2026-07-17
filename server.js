@@ -74,13 +74,19 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-function dayDir(date) {
+function dayDir(date, sessionsDir = SESSIONS_DIR) {
   return path.join(
-    SESSIONS_DIR,
+    sessionsDir,
     String(date.getFullYear()),
     pad2(date.getMonth() + 1),
     pad2(date.getDate())
   );
+}
+
+function localDayKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 function listJsonl(dir) {
@@ -94,98 +100,176 @@ function listJsonl(dir) {
   }
 }
 
-// ---- per-file parse -------------------------------------------------------
-// Only fully parse lines that look like token_count / session_meta to keep
-// large (multi-MB) files cheap.
-
-function parseSessionFile(file) {
-  let content;
-  try {
-    content = fs.readFileSync(file, "utf8");
-  } catch {
-    return null;
+function listAllJsonl(root) {
+  const files = [];
+  const pending = [root];
+  while (pending.length) {
+    const dir = pending.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const target = path.join(dir, entry.name);
+      if (entry.isDirectory()) pending.push(target);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(target);
+    }
   }
+  return files;
+}
 
-  const out = {
+function recentlyActiveSessionFiles(now, sessionsDir = SESSIONS_DIR) {
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const files = new Set(listJsonl(dayDir(midnight, sessionsDir)));
+  for (const file of listAllJsonl(sessionsDir)) {
+    try {
+      if (fs.statSync(file).mtimeMs >= midnight.getTime()) files.add(file);
+    } catch {
+      /* file disappeared while scanning */
+    }
+  }
+  return [...files];
+}
+
+// ---- per-file incremental parse ------------------------------------------
+// A long-running Codex task keeps appending to the file for the day on which
+// the task started, even after local midnight. Cache the parsed byte offset and
+// consume only appended JSONL records so a 100 MB active task is not reread
+// every four seconds.
+
+const sessionParseCache = new Map();
+
+function newSessionState(file) {
+  return {
     file,
+    offset: 0,
+    remainder: "",
     sessionId: null,
     cwd: null,
     model: null,
     provider: null,
     startedAt: null,
+    startedDayKey: null,
     lastEventAt: null,
-    finalTotalTokens: 0, // cumulative session total (last token_count)
-    lastTurnTokens: 0,   // last-turn total (real context-window fill)
+    finalTotalTokens: 0,
+    lastTurnTokens: 0,
     contextWindow: 0,
-    tokenEvents: 0, // number of turns with a token_count
-    rateLimits: null, // latest non-empty rate_limits snapshot (real plan quota)
+    tokenEvents: 0,
+    rateLimits: null,
     rateLimitsAt: null,
-    planType: null, // latest non-null plan_type (proxy sometimes drops it)
+    planType: null,
     planTypeAt: null,
+    dailyBuckets: Object.create(null),
   };
+}
 
-  const lines = content.split("\n");
-  for (const line of lines) {
-    if (!line) continue;
-    const hasToken = line.indexOf("token_count") !== -1;
-    const hasMeta = line.indexOf("session_meta") !== -1;
-    if (!hasToken && !hasMeta) continue;
+function dailyBucket(state, key) {
+  if (!state.dailyBuckets[key]) {
+    state.dailyBuckets[key] = {
+      used: 0,
+      calls: 0,
+      lastEventAt: null,
+      lastTurnTokens: 0,
+      contextWindow: 0,
+    };
+  }
+  return state.dailyBuckets[key];
+}
 
-    let rec;
-    try {
-      rec = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const p = rec && rec.payload;
-    if (!p) continue;
+function parseSessionLine(out, line) {
+  if (!line) return;
+  const hasToken = line.indexOf("token_count") !== -1;
+  const hasMeta = line.indexOf("session_meta") !== -1;
+  if (!hasToken && !hasMeta) return;
 
-    if (rec.type === "session_meta") {
-      out.sessionId = p.session_id || p.id || out.sessionId;
-      out.cwd = p.cwd || out.cwd;
-      out.provider = p.model_provider || out.provider;
-      out.startedAt = rec.timestamp || p.timestamp || out.startedAt;
-      continue;
-    }
+  let rec;
+  try {
+    rec = JSON.parse(line);
+  } catch {
+    return;
+  }
+  const p = rec && rec.payload;
+  if (!p) return;
 
-    if (p.type === "token_count" && p.info) {
-      const info = p.info;
-      const total =
-        (info.total_token_usage && info.total_token_usage.total_tokens) || 0;
-      if (total > out.finalTotalTokens) out.finalTotalTokens = total;
-      if (info.model_context_window)
-        out.contextWindow = info.model_context_window;
-      if (rec.timestamp) out.lastEventAt = rec.timestamp;
-      const lastTurn =
-        (info.last_token_usage && info.last_token_usage.total_tokens) || 0;
-      if (lastTurn > 0) out.tokenEvents += 1;
-      // context fill = the MOST RECENT turn's token count (what's currently in
-      // the model's context window), NOT the cumulative session total.
-      if (rec.timestamp && rec.timestamp >= (out.lastEventAt || "")) {
-        out.lastTurnTokens = lastTurn;
-      }
+  if (rec.type === "session_meta") {
+    out.sessionId = p.session_id || p.id || out.sessionId;
+    out.cwd = p.cwd || out.cwd;
+    out.provider = p.model_provider || out.provider;
+    out.model = p.model || out.model;
+    out.startedAt = rec.timestamp || p.timestamp || out.startedAt;
+    out.startedDayKey = localDayKey(out.startedAt) || out.startedDayKey;
+    return;
+  }
 
-      // keep the LATEST rate_limits that actually has real quota data
-      const rl = p.rate_limits;
-      if (rl && (rl.primary || rl.secondary || rl.credits != null)) {
-        out.rateLimits = rl;
-        out.rateLimitsAt = rec.timestamp || out.lastEventAt;
-      }
-      // plan_type gets nulled out by the proxy on most turns; keep the latest
-      // non-null one independently so the panel can still show "Plus".
-      if (rl && rl.plan_type) {
-        out.planType = rl.plan_type;
-        out.planTypeAt = rec.timestamp || out.lastEventAt;
-      }
-      // plan_type is dropped on many proxy responses; track its latest
-      // non-null value separately so the badge doesn't flicker to "unknown".
-      if (rl && rl.plan_type) {
-        out.planType = rl.plan_type;
-        out.planTypeAt = rec.timestamp || out.lastEventAt;
-      }
+  if (p.type !== "token_count" || !p.info) return;
+  const info = p.info;
+  const total = Number(info.total_token_usage?.total_tokens) || 0;
+  const delta = Math.max(0, total - out.finalTotalTokens);
+  if (total > out.finalTotalTokens) out.finalTotalTokens = total;
+  if (info.model_context_window) out.contextWindow = info.model_context_window;
+  const timestamp = rec.timestamp || p.timestamp || null;
+  if (timestamp) out.lastEventAt = timestamp;
+  const lastTurn = Number(info.last_token_usage?.total_tokens) || 0;
+  if (lastTurn > 0) out.tokenEvents += 1;
+  out.lastTurnTokens = lastTurn;
+
+  const key = localDayKey(timestamp);
+  if (key) {
+    const bucket = dailyBucket(out, key);
+    bucket.used += delta;
+    if (lastTurn > 0) bucket.calls += 1;
+    if (!bucket.lastEventAt || timestamp >= bucket.lastEventAt) {
+      bucket.lastEventAt = timestamp;
+      bucket.lastTurnTokens = lastTurn;
+      bucket.contextWindow = out.contextWindow;
     }
   }
 
+  const rl = p.rate_limits;
+  if (rl && (rl.primary || rl.secondary || rl.credits != null)) {
+    out.rateLimits = rl;
+    out.rateLimitsAt = timestamp || out.lastEventAt;
+  }
+  if (rl && rl.plan_type) {
+    out.planType = rl.plan_type;
+    out.planTypeAt = timestamp || out.lastEventAt;
+  }
+}
+
+function parseSessionFile(file) {
+  let stat;
+  try {
+    stat = fs.statSync(file);
+  } catch {
+    return null;
+  }
+  let out = sessionParseCache.get(file);
+  if (!out || stat.size < out.offset) {
+    out = newSessionState(file);
+    sessionParseCache.set(file, out);
+  }
+  if (stat.size <= out.offset) return out;
+
+  const length = stat.size - out.offset;
+  const buffer = Buffer.allocUnsafe(length);
+  let bytesRead = 0;
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    bytesRead = fs.readSync(fd, buffer, 0, length, out.offset);
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) fs.closeSync(fd);
+  }
+  const content = out.remainder + buffer.toString("utf8", 0, bytesRead);
+  const lines = content.split("\n");
+  out.remainder = lines.pop() || "";
+  for (const line of lines) parseSessionLine(out, line.replace(/\r$/, ""));
+  out.offset += bytesRead;
   return out;
 }
 
@@ -225,7 +309,7 @@ function normalizeWindow(w) {
   };
 }
 
-function findFreshestRateLimits() {
+function findFreshestRateLimits(sessionsDir = SESSIONS_DIR) {
   const now = new Date();
   let best = null;
   let bestAt = "";
@@ -238,7 +322,7 @@ function findFreshestRateLimits() {
   for (let i = 0; i < 14; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    for (const f of listJsonl(dayDir(d))) {
+    for (const f of listJsonl(dayDir(d, sessionsDir))) {
       const s = parseSessionFile(f);
       if (!s) continue;
       if (s.rateLimits && (s.rateLimitsAt || "") > bestAt) {
@@ -258,24 +342,31 @@ function findFreshestRateLimits() {
 
 // ---- aggregation ----------------------------------------------------------
 
-function aggregateToday(CONFIG) {
-  const now = new Date();
-  const files = listJsonl(dayDir(now));
-
+function aggregateToday(CONFIG, opts = {}) {
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const todayKey = localDayKey(now);
+  const files = opts.files || recentlyActiveSessionFiles(now, opts.sessionsDir || SESSIONS_DIR);
   const sessions = files
     .map(parseSessionFile)
-    .filter((s) => s && (s.finalTotalTokens > 0 || s.sessionId));
+    .filter((s) => {
+      if (!s) return false;
+      const bucket = s.dailyBuckets[todayKey];
+      return Boolean(bucket || s.startedDayKey === todayKey);
+    });
 
   let usedToday = 0;
   let callsToday = 0;
   let latest = null;
 
   for (const s of sessions) {
-    usedToday += s.finalTotalTokens;
-    callsToday += s.tokenEvents;
-    const t = s.lastEventAt || s.startedAt || "";
-    if (!latest || (t && t > (latest.lastEventAt || latest.startedAt || ""))) {
-      latest = s;
+    const bucket = s.dailyBuckets[todayKey];
+    if (bucket) {
+      usedToday += bucket.used;
+      callsToday += bucket.calls;
+    }
+    const t = (bucket && bucket.lastEventAt) || s.startedAt || "";
+    if (!latest || (t && t > latest.at)) {
+      latest = { session: s, bucket, at: t };
     }
   }
 
@@ -283,8 +374,10 @@ function aggregateToday(CONFIG) {
   // sits in the model's context window right now). NOT the cumulative session
   // total (finalTotalTokens), which grows unboundedly across turns and would
   // wrongly exceed the window.
-  const contextWindow = latest ? latest.contextWindow : 0;
-  const contextUsed = latest ? latest.lastTurnTokens : 0;
+  const latestSession = latest ? latest.session : null;
+  const latestBucket = latest ? latest.bucket : null;
+  const contextWindow = latestBucket ? latestBucket.contextWindow : 0;
+  const contextUsed = latestBucket ? latestBucket.lastTurnTokens : 0;
   const budget = CONFIG.dailyBudgetTokens || 20000000;
 
   // real plan quota. PREFER the live /wham/usage snapshot (refreshes without
@@ -304,7 +397,7 @@ function aggregateToday(CONFIG) {
       stale: !liveCache.ok, // last fetch failed → data is a bit old
     };
   } else {
-    const { rl, at, planType } = findFreshestRateLimits();
+    const { rl, at, planType } = findFreshestRateLimits(opts.sessionsDir || SESSIONS_DIR);
     if (rl) {
       plan = {
         planType: (rl.plan_type || planType) || null,
@@ -328,9 +421,9 @@ function aggregateToday(CONFIG) {
   return {
     ok: true,
     updatedAt: now.toISOString(),
-    provider: latest ? latest.provider : null,
-    model: latest ? latest.model : null,
-    activeCwd: latest ? latest.cwd : null,
+    provider: latestSession ? latestSession.provider : null,
+    model: latestSession ? latestSession.model : null,
+    activeCwd: latestSession ? latestSession.cwd : null,
     plan,
     daily: {
       used: usedToday,

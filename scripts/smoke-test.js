@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, "..");
 process.env.QUOTA_WEATHER_DATA_DIR = path.join(ROOT, ".tmp", "test-settings");
 
 const { fetchLiveUsage, normalizeLive } = require("../liveUsage.js");
-const { startDataServer } = require("../server.js");
+const { aggregateToday, startDataServer } = require("../server.js");
 const { defaultConfig } = require("../settings.js");
 
 function get(port, pathname) {
@@ -76,6 +76,72 @@ async function main() {
     assert(html.includes(`id: '${theme}'`), `renderer is missing theme ${theme}`);
   }
   assert(html.includes("DEMO_MODE"), "renderer demo mode is missing");
+
+  const fixtureRoot = path.join(ROOT, ".tmp", "cross-midnight-sessions");
+  fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  const previousDir = path.join(fixtureRoot, "2026", "01", "01");
+  const todayDir = path.join(fixtureRoot, "2026", "01", "02");
+  fs.mkdirSync(previousDir, { recursive: true });
+  fs.mkdirSync(todayDir, { recursive: true });
+  const at = (day, hour, minute) => new Date(2026, 0, day, hour, minute, 0).toISOString();
+  const meta = (timestamp, id) =>
+    JSON.stringify({ timestamp, type: "session_meta", payload: { id, cwd: ROOT } });
+  const tokens = (timestamp, total, last) =>
+    JSON.stringify({
+      timestamp,
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: { total_tokens: total },
+          last_token_usage: { total_tokens: last },
+          model_context_window: 1000,
+        },
+      },
+    });
+  const overnightFile = path.join(previousDir, "rollout-overnight.jsonl");
+  fs.writeFileSync(
+    overnightFile,
+    [
+      meta(at(1, 20, 0), "overnight"),
+      tokens(at(1, 23, 50), 100, 100),
+      tokens(at(2, 0, 30), 160, 60),
+      tokens(at(2, 1, 0), 230, 70),
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+  const fixtureNow = new Date(2026, 0, 2, 12, 0, 0);
+  let fixtureStats = aggregateToday(
+    { dailyBudgetTokens: 1000 },
+    { now: fixtureNow, sessionsDir: fixtureRoot, files: [overnightFile] }
+  );
+  assert.strictEqual(fixtureStats.daily.used, 130, "overnight usage must use today's delta");
+  assert.strictEqual(fixtureStats.callsToday, 2, "overnight calls must be split at midnight");
+  assert.strictEqual(fixtureStats.sessionsToday, 1, "active overnight session must count today");
+
+  fs.appendFileSync(overnightFile, tokens(at(2, 3, 0), 260, 30) + "\n", "utf8");
+  fixtureStats = aggregateToday(
+    { dailyBudgetTokens: 1000 },
+    { now: fixtureNow, sessionsDir: fixtureRoot, files: [overnightFile] }
+  );
+  assert.strictEqual(fixtureStats.daily.used, 160, "appended usage must be parsed incrementally");
+  assert.strictEqual(fixtureStats.callsToday, 3, "appended call must update immediately");
+
+  const newSessionFile = path.join(todayDir, "rollout-today.jsonl");
+  fs.writeFileSync(
+    newSessionFile,
+    [meta(at(2, 4, 0), "today"), tokens(at(2, 4, 5), 40, 40), ""].join("\n"),
+    "utf8"
+  );
+  fixtureStats = aggregateToday(
+    { dailyBudgetTokens: 1000 },
+    { now: fixtureNow, sessionsDir: fixtureRoot }
+  );
+  assert.strictEqual(fixtureStats.daily.used, 200);
+  assert.strictEqual(fixtureStats.callsToday, 4);
+  assert.strictEqual(fixtureStats.sessionsToday, 2);
+  fs.rmSync(fixtureRoot, { recursive: true, force: true });
 
   const backgrounds = fs
     .readdirSync(path.join(ROOT, "assets", "backgrounds"))
