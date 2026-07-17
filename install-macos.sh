@@ -219,6 +219,7 @@ step "Installing the stable launcher and version state"
 cp "$VERSION_DIR/launcher/launcher.js" "$LAUNCHER_DIR/launcher.js"
 cp "$VERSION_DIR/launcher/start-macos.sh" "$LAUNCHER_DIR/start-macos.sh"
 chmod +x "$LAUNCHER_DIR/start-macos.sh"
+cp "$VERSION_DIR/scripts/manage-codex-plugin.js" "$INSTALL_DIR/manage-codex-plugin.js"
 cp "$VERSION_DIR/uninstall-macos.sh" "$INSTALL_DIR/uninstall-macos.sh"
 chmod +x "$INSTALL_DIR/uninstall-macos.sh"
 
@@ -245,6 +246,9 @@ const state = {
 };
 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf8');
 NODESTATE
+
+step "Installing and enabling the Codex /quota plugin"
+"$NODE" "$INSTALL_DIR/manage-codex-plugin.js" install "$VERSION_DIR/codex-plugin/quota-weather"
 
 launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
 if [ "$NO_STARTUP" = "1" ]; then
@@ -282,3 +286,4 @@ fi
 printf 'Install path: %s\n' "$INSTALL_DIR"
 printf 'Active version: %s\n' "$VERSION_DIR"
 printf 'User settings: %s\n' "$INSTALL_DIR/config.json"
+printf 'Codex command: /quota (restart Codex once after first install)\n'

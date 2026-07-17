@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const STATE_DIR = path.join(ROOT, "state");
@@ -165,6 +165,7 @@ function updateStableFiles(version) {
     [path.join(versionDir, "launcher", "launcher.js"), path.join(ROOT, "launcher", "launcher.js")],
     [path.join(versionDir, "launcher", "start-hidden.vbs"), path.join(ROOT, "launcher", "start-hidden.vbs")],
     [path.join(versionDir, "launcher", "start-macos.sh"), path.join(ROOT, "launcher", "start-macos.sh")],
+    [path.join(versionDir, "scripts", "manage-codex-plugin.js"), path.join(ROOT, "manage-codex-plugin.js")],
     [path.join(versionDir, "uninstall.ps1"), path.join(ROOT, "uninstall.ps1")],
     [path.join(versionDir, "uninstall-macos.sh"), path.join(ROOT, "uninstall-macos.sh")],
     [path.join(versionDir, "scripts", "remove-install.ps1"), path.join(ROOT, "scripts", "remove-install.ps1")],
@@ -173,6 +174,19 @@ function updateStableFiles(version) {
   if (process.platform !== "win32") {
     for (const filePath of [path.join(ROOT, "launcher", "start-macos.sh"), path.join(ROOT, "uninstall-macos.sh")]) {
       try { if (fs.existsSync(filePath)) fs.chmodSync(filePath, 0o755); } catch { /* best effort */ }
+    }
+  }
+
+  const pluginManager = path.join(ROOT, "manage-codex-plugin.js");
+  const pluginSource = path.join(versionDir, "codex-plugin", "quota-weather");
+  if (fs.existsSync(pluginManager) && fs.existsSync(pluginSource)) {
+    const result = spawnSync(process.execPath, [pluginManager, "install", pluginSource], {
+      cwd: ROOT,
+      windowsHide: true,
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      throw new Error(`Codex /quota plugin update failed: ${(result.stderr || result.stdout || "unknown error").trim()}`);
     }
   }
 }

@@ -505,6 +505,29 @@ function startDataServer(opts = {}) {
       return;
     }
 
+    const panelCommand = /^\/panel\/(show|hide|toggle)$/.exec(url);
+    if (panelCommand) {
+      if (req.method !== "POST") {
+        res.writeHead(405, { "Content-Type": "application/json", Allow: "POST" });
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      if (typeof opts.panelControl !== "function") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "panel_control_unavailable" }));
+        return;
+      }
+      try {
+        const state = opts.panelControl(panelCommand[1]) || {};
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...state }));
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: String(error) }));
+      }
+      return;
+    }
+
     if (url === "/quota") {
       try {
         const data = aggregateToday(CONFIG);

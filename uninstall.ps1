@@ -36,6 +36,12 @@ if (-not $KeepSettings) {
     -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+$nodeExe = Join-Path $installRoot "runtime\node\node.exe"
+$pluginManager = Join-Path $installRoot "manage-codex-plugin.js"
+if ((Test-Path -LiteralPath $nodeExe) -and (Test-Path -LiteralPath $pluginManager)) {
+  & $nodeExe $pluginManager remove 2>$null | Out-Null
+}
+
 if (Test-Path -LiteralPath $installRoot) {
   $cleanupSource = Join-Path $PSScriptRoot "scripts\remove-install.ps1"
   $cleanupCopy = Join-Path ([IO.Path]::GetTempPath()) (

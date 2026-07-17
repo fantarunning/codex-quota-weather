@@ -1,0 +1,33 @@
+{
+  "name": "quota-weather",
+  "version": "0.2.0+codex.20260717091126",
+  "description": "Use /quota to start, show, or hide the local Codex Quota Weather panel on Windows and macOS.",
+  "author": {
+    "name": "fantarunning",
+    "url": "https://github.com/fantarunning"
+  },
+  "homepage": "https://github.com/fantarunning/codex-quota-weather",
+  "repository": "https://github.com/fantarunning/codex-quota-weather",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "quota",
+    "weather",
+    "panel"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Quota",
+    "shortDescription": "Use /quota to toggle the quota panel.",
+    "longDescription": "Starts the installed Codex Quota Weather app when needed and toggles its floating panel from Codex on Windows and macOS.",
+    "developerName": "fantarunning",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "/quota"
+    ],
+    "brandColor": "#88B8FF"
+  }
+}

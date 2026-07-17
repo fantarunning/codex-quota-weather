@@ -200,6 +200,7 @@ try {
   Get-ChildItem -LiteralPath (Join-Path $versionDir "launcher") -Force |
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $launcherDir -Recurse -Force }
   Copy-Item -LiteralPath (Join-Path $versionDir "uninstall.ps1") -Destination (Join-Path $installRoot "uninstall.ps1") -Force
+  Copy-Item -LiteralPath (Join-Path $versionDir "scripts\manage-codex-plugin.js") -Destination (Join-Path $installRoot "manage-codex-plugin.js") -Force
   New-Item -ItemType Directory -Path (Join-Path $installRoot "scripts") -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $versionDir "scripts\remove-install.ps1") -Destination (Join-Path $installRoot "scripts\remove-install.ps1") -Force
 
@@ -227,6 +228,10 @@ try {
     updatedAt = (Get-Date).ToUniversalTime().ToString("o")
   }
   Write-JsonFile $stateFile $state
+
+  Write-Step "Installing and enabling the Codex /quota plugin"
+  & $nodeExe (Join-Path $installRoot "manage-codex-plugin.js") install (Join-Path $versionDir "codex-plugin\quota-weather")
+  if ($LASTEXITCODE -ne 0) { throw "The Codex /quota plugin installation failed." }
 
   $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
   $shortcutPath = Join-Path $startupDir "Codex Quota Weather.lnk"
@@ -280,6 +285,7 @@ try {
   Write-Host "Install path: $installRoot"
   Write-Host "Active version: $versionDir"
   Write-Host "User settings: $userConfig"
+  Write-Host "Codex command: /quota (restart Codex once after first install)"
 } finally {
   if ($tempVersionDir -and (Test-Path -LiteralPath $tempVersionDir)) {
     Remove-Item -LiteralPath $tempVersionDir -Recurse -Force -ErrorAction SilentlyContinue

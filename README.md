@@ -23,6 +23,7 @@
 - 内置雨景、流星、花瓣、雪景和海浪五套天气，每套包含三张背景。
 - 默认每 10 分钟自动换天气，可在托盘菜单切换为关闭、1、5、10 或 30 分钟。
 - 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从 Windows 系统托盘或 macOS 菜单栏手动控制。
+- 在 Codex 中直接输入 `/quota`；程序未运行时会启动，运行中则显示或隐藏悬浮窗。
 - 原生支持 Windows 10/11、Apple Silicon Mac 和 Intel Mac。
 - 支持横版、沿用完整天气背景与特效的竖版、悬浮球、置顶、缩放、拖动、中英文和减少动态效果；竖版基准布局为 `240 × 520`，首次切换默认显示为 `120 × 260`（面积为基准布局的 1/4）。
 - 支持悬浮窗内下载更新、历史版本回退和新版本启动失败自动恢复。
@@ -66,7 +67,8 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 3. 校验 Node.js 下载文件的 SHA-256；
 4. 安装依赖并执行烟雾测试；
 5. 创建 Windows Startup 或 macOS LaunchAgent 开机启动项；
-6. 启动并验证本地服务，主动打开悬浮窗，并保留最近 5 个可回退版本。
+6. 安装并启用跨平台 Codex `/quota` 插件；
+7. 启动并验证本地服务，主动打开悬浮窗，并保留最近 5 个可回退版本。
 
 | 平台 | 应用目录 | 个人设置 |
 | --- | --- | --- |
@@ -75,6 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 
 首次安装后，窗口位置、缩放和自动天气设置会在升级、回退时保留。执行前可先查看
 [CMD 安装入口](install.cmd)、[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
+首次安装或插件升级后重启一次 Codex，再新建任务输入 `/quota`；以后即使从托盘/菜单栏选择“退出”，也能用同一命令重新启动。
 
 ## 面板更新与历史版本
 
@@ -142,6 +145,7 @@ npm run setup:electron
 
 | 操作 | 结果 |
 | --- | --- |
+| 在 Codex 新任务中输入 `/quota` | 未运行时启动程序；运行中显示或隐藏悬浮窗 |
 | 点击左侧额度圆环 | 切换到下一种天气 |
 | 点击顶部天气名称 | 更换当前天气的背景 |
 | 点击 `中 / EN` | 切换界面语言 |
@@ -248,6 +252,13 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 - 默认端口可用 `curl http://127.0.0.1:8787/health` 检查；如果修改过 `config.json` 的 `port`，请使用修改后的端口。
 - 启动失败时查看 `~/Library/Application Support/CodexQuotaWeather/logs/launcher.log` 和 `~/Library/Logs/CodexQuotaWeather.log`。
 - 修复安装器后无需先卸载，重新执行上方同一条 macOS 一行安装命令即可。
+
+### Codex 输入 `/quota` 没有启动
+
+- 首次安装或插件升级后需要完整重启一次 Codex，并在新任务中发送内容完全一致的 `/quota`。
+- 安装器会自动创建个人插件市场、启用 `quota-weather@personal`，不需要手动输入复杂插件名。
+- Windows 检查 `%USERPROFILE%\plugins\quota-weather\scripts\show-quota.ps1`；macOS 检查 `~/plugins/quota-weather/scripts/show-quota.sh`。
+- 文件不存在时重新执行对应平台的一行安装命令。
 
 ### 周额度显示离线或长时间不更新
 

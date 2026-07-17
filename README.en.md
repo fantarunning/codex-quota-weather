@@ -18,6 +18,7 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 - Includes rain, meteor, blossom, snow, and ocean scenes with three backgrounds each.
 - Rotates weather automatically; choose off, 1, 5, 10, or 30 minutes from the tray.
 - Follows Codex Desktop (`ChatGPT` / `ChatGPT.exe`) and Codex CLI (`Codex` / `Codex.exe`).
+- Accepts `/quota` directly in Codex: start the app when it is not running, or show/hide the panel when it is running.
 - Supports Windows 10/11, Apple Silicon Macs, and Intel Macs.
 - Supports a landscape card, a full-weather portrait card, a compact floating orb, pinning, resizing, Chinese/English, and reduced motion. The portrait design uses a `240 × 520` base layout and initially opens at `120 × 260` (one quarter of the base area).
 - Supports in-panel updates, tray-based version rollback, and automatic recovery from a failed update.
@@ -58,6 +59,7 @@ A first install normally takes 1–3 minutes; keep Terminal open. The macOS inst
 Neither installer requires administrator access or a preinstalled Node.js. It installs
 a private Node.js 24 runtime, a stable launcher, Electron, and versioned application
 directories. It verifies downloads, runs the smoke test, enables login startup, verifies the local service, and launches the panel.
+It also installs and enables the cross-platform Codex `/quota` plugin. Restart Codex once after the first install or a plugin update, then send `/quota` in a new task. The same command starts the app again after **Quit**.
 
 | Platform | Application | User settings |
 | --- | --- | --- |
@@ -135,6 +137,7 @@ npm run setup:electron
 
 | Action | Result |
 | --- | --- |
+| Send `/quota` in a new Codex task | Start the app when stopped; otherwise show or hide the panel |
 | Click the quota ring | Switch to the next weather scene |
 | Click the weather name | Change the current scene's background |
 | Click `中 / EN` | Switch language |
@@ -213,6 +216,13 @@ The first install downloads roughly 150 MB of Electron and normally takes 1–3 
 - Check the default endpoint with `curl http://127.0.0.1:8787/health`. If `port` was changed in `config.json`, use that port instead.
 - Inspect `~/Library/Application Support/CodexQuotaWeather/logs/launcher.log` and `~/Library/Logs/CodexQuotaWeather.log` after a startup failure.
 - There is no need to uninstall first; rerun the same macOS one-command installer after an installer fix.
+
+### `/quota` does not start the panel in Codex
+
+- Fully restart Codex once after the first install or a plugin update, then send exactly `/quota` in a new task.
+- The installer creates the personal marketplace entry and enables `quota-weather@personal`; no long plugin-qualified command is required.
+- On Windows, verify `%USERPROFILE%\plugins\quota-weather\scripts\show-quota.ps1`. On macOS, verify `~/plugins/quota-weather/scripts/show-quota.sh`.
+- Rerun the platform one-command installer if the script is missing.
 
 ### Weekly quota is offline or stale
 

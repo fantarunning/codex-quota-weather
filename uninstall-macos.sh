@@ -43,6 +43,12 @@ if [ "$KEEP_SETTINGS" = "1" ] && [ -f "$INSTALL_DIR/config.json" ]; then
   cp "$INSTALL_DIR/config.json" "$SAVED_CONFIG"
 fi
 
+NODE="$INSTALL_DIR/runtime/node/bin/node"
+PLUGIN_MANAGER="$INSTALL_DIR/manage-codex-plugin.js"
+if [ -x "$NODE" ] && [ -f "$PLUGIN_MANAGER" ]; then
+  "$NODE" "$PLUGIN_MANAGER" remove >/dev/null 2>&1 || true
+fi
+
 rm -rf "$INSTALL_DIR"
 if [ -n "$SAVED_CONFIG" ] && [ -f "$SAVED_CONFIG" ]; then
   mkdir -p "$INSTALL_DIR"

@@ -289,6 +289,14 @@ function togglePanel() {
   else { showPanel(); }
 }
 
+function controlPanel(action) {
+  if (action === 'show') showPanel();
+  else if (action === 'hide') { userHidden = true; hidePanel(); }
+  else if (action === 'toggle') togglePanel();
+  else throw new Error(`Unsupported panel action: ${action}`);
+  return { action, visible: !!(win && win.isVisible()) };
+}
+
 // ---- view modes: card / portrait card / crystal-ball orb ------------------
 // The header cycle button steps card → mini (portrait weather card) → orb
 // (crystal ball) → card. Each mode reshapes the window and tells the renderer
@@ -731,7 +739,11 @@ if (!gotLock) {
     if (process.platform === 'darwin' && app.dock) app.dock.hide();
     // start the in-process data server
     const { startDataServer } = require('./server.js');
-    dataServer = startDataServer({ port: cfg.port, standalone: false });
+    dataServer = startDataServer({
+      port: cfg.port,
+      standalone: false,
+      panelControl: controlPanel,
+    });
 
     updateManager = new UpdateManager({
       appDir: APP_DIR,

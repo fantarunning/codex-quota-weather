@@ -1,4 +1,5 @@
 const assert = require("assert");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -11,10 +12,10 @@ const { fetchLiveUsage, normalizeLive } = require("../liveUsage.js");
 const { aggregateToday, startDataServer } = require("../server.js");
 const { defaultConfig } = require("../settings.js");
 
-function get(port, pathname) {
+function request(port, pathname, method = "GET") {
   return new Promise((resolve, reject) => {
-    const req = http.get(
-      { hostname: "127.0.0.1", port, path: pathname, timeout: 10000 },
+    const req = http.request(
+      { hostname: "127.0.0.1", port, path: pathname, method, timeout: 10000 },
       (res) => {
         const chunks = [];
         res.on("data", (chunk) => chunks.push(chunk));
@@ -29,7 +30,12 @@ function get(port, pathname) {
     );
     req.on("error", reject);
     req.on("timeout", () => req.destroy(new Error("request timeout")));
+    req.end();
   });
+}
+
+function get(port, pathname) {
+  return request(port, pathname);
 }
 
 async function main() {
@@ -93,6 +99,7 @@ async function main() {
   assert(html.includes('onclick="changeBgInTheme(event)"'), "portrait background click action is missing");
   const mainSource = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
   assert(mainSource.includes("quota:skip-update"), "skip-update IPC handler is missing");
+  assert(mainSource.includes("panelControl: controlPanel"), "main process does not expose local panel controls");
   assert(!mainSource.includes("版本与更新 / Version & updates"), "tray still contains the version/update menu");
   const macInstaller = fs.readFileSync(path.join(ROOT, "install-macos.sh"), "utf8");
   assert(!macInstaller.includes("$($NODE "), "macOS installer invokes the private Node path without quotes");
@@ -102,6 +109,73 @@ async function main() {
   assert(windowsEntry.includes("Starting installer"), "Windows CMD installer has no immediate progress message");
   const windowsInstaller = fs.readFileSync(path.join(ROOT, "install.ps1"), "utf8");
   assert(windowsInstaller.includes("Wait-ForLocalPanel"), "Windows installer does not verify panel startup");
+  assert(windowsInstaller.includes("manage-codex-plugin.js"), "Windows installer does not deploy the /quota plugin");
+  assert(macInstaller.includes("manage-codex-plugin.js"), "macOS installer does not deploy the /quota plugin");
+  const pluginRoot = path.join(ROOT, "codex-plugin", "quota-weather");
+  const pluginManifest = JSON.parse(
+    fs.readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
+  );
+  assert.strictEqual(pluginManifest.name, "quota-weather");
+  assert.deepStrictEqual(pluginManifest.interface.defaultPrompt, ["/quota"]);
+  assert(fs.existsSync(path.join(pluginRoot, "scripts", "show-quota.sh")));
+  assert(fs.existsSync(path.join(pluginRoot, "scripts", "show-quota.ps1")));
+
+  const pluginTestHome = path.join(ROOT, ".tmp", "codex-plugin-management");
+  const pluginTestConfig = path.join(pluginTestHome, ".codex", "config.toml");
+  const pluginTestMarketplace = path.join(pluginTestHome, ".agents", "plugins", "marketplace.json");
+  fs.rmSync(pluginTestHome, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(pluginTestConfig), { recursive: true });
+  fs.mkdirSync(path.dirname(pluginTestMarketplace), { recursive: true });
+  fs.writeFileSync(pluginTestConfig, '[plugins."other@personal"]\nenabled = true\n', "utf8");
+  fs.writeFileSync(
+    pluginTestMarketplace,
+    JSON.stringify({
+      name: "personal",
+      interface: { displayName: "My Personal Plugins" },
+      plugins: [{
+        name: "other",
+        source: { source: "local", path: "./plugins/other" },
+        policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+        category: "Productivity",
+      }],
+    }, null, 2) + "\n",
+    "utf8"
+  );
+  const pluginManager = path.join(ROOT, "scripts", "manage-codex-plugin.js");
+  const pluginEnv = {
+    ...process.env,
+    CODEX_QUOTA_WEATHER_PLUGIN_HOME: pluginTestHome,
+    CODEX_HOME: path.join(pluginTestHome, ".codex"),
+  };
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    const installPlugin = spawnSync(process.execPath, [pluginManager, "install", pluginRoot], {
+      cwd: ROOT,
+      env: pluginEnv,
+      encoding: "utf8",
+    });
+    assert.strictEqual(installPlugin.status, 0, installPlugin.stderr || installPlugin.stdout);
+  }
+  assert(fs.existsSync(path.join(pluginTestHome, "plugins", "quota-weather", "skills", "quota", "SKILL.md")));
+  const installedMarketplace = JSON.parse(fs.readFileSync(pluginTestMarketplace, "utf8"));
+  assert.strictEqual(installedMarketplace.interface.displayName, "My Personal Plugins");
+  assert.deepStrictEqual(installedMarketplace.plugins.map((entry) => entry.name), ["other", "quota-weather"]);
+  const installedPluginConfig = fs.readFileSync(pluginTestConfig, "utf8");
+  assert(installedPluginConfig.includes('[plugins."other@personal"]'));
+  assert(installedPluginConfig.includes('[plugins."quota-weather@personal"]'));
+
+  const removePlugin = spawnSync(process.execPath, [pluginManager, "remove"], {
+    cwd: ROOT,
+    env: pluginEnv,
+    encoding: "utf8",
+  });
+  assert.strictEqual(removePlugin.status, 0, removePlugin.stderr || removePlugin.stdout);
+  assert(!fs.existsSync(path.join(pluginTestHome, "plugins", "quota-weather")));
+  assert.deepStrictEqual(
+    JSON.parse(fs.readFileSync(pluginTestMarketplace, "utf8")).plugins.map((entry) => entry.name),
+    ["other"]
+  );
+  assert(!fs.readFileSync(pluginTestConfig, "utf8").includes('[plugins."quota-weather@personal"]'));
+  fs.rmSync(pluginTestHome, { recursive: true, force: true });
   const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
   assert(ciWorkflow.includes("Directory With Spaces/CodexQuotaWeather-CI"), "macOS CI install path must exercise spaces");
 
@@ -183,7 +257,15 @@ async function main() {
   }
 
   const port = 19000 + Math.floor(Math.random() * 1000);
-  const server = startDataServer({ port, disableLiveUsage: true });
+  const panelActions = [];
+  const server = startDataServer({
+    port,
+    disableLiveUsage: true,
+    panelControl(action) {
+      panelActions.push(action);
+      return { action, visible: action !== "hide" };
+    },
+  });
   await new Promise((resolve, reject) => {
     server.once("listening", resolve);
     server.once("error", reject);
@@ -193,6 +275,15 @@ async function main() {
     const health = await get(port, "/health");
     assert.strictEqual(health.status, 200);
     assert.strictEqual(JSON.parse(health.body.toString("utf8")).ok, true);
+
+    const panel = await request(port, "/panel/toggle", "POST");
+    assert.strictEqual(panel.status, 200);
+    assert.deepStrictEqual(panelActions, ["toggle"]);
+    assert.deepStrictEqual(JSON.parse(panel.body.toString("utf8")), {
+      ok: true,
+      action: "toggle",
+      visible: true,
+    });
 
     const quota = await get(port, "/quota");
     assert.strictEqual(quota.status, 200);
