@@ -12,14 +12,20 @@
 // The panel window itself uses skipTaskbar so it never shows a taskbar button;
 // the tray icon is the only persistent UI affordance.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { loadConfig, updateConfig } = require('./settings.js');
+const { UpdateManager, markBootSuccessful } = require('./update-manager.js');
 
 const APP_DIR = __dirname;
 const SMOKE_MODE = process.env.QUOTA_WEATHER_SMOKE === '1';
+if (process.env.QUOTA_WEATHER_DATA_DIR) {
+  const isolatedUserData = path.join(path.resolve(process.env.QUOTA_WEATHER_DATA_DIR), '.electron');
+  fs.mkdirSync(isolatedUserData, { recursive: true });
+  app.setPath('userData', isolatedUserData);
+}
 
 // ---- config ---------------------------------------------------------------
 
@@ -33,6 +39,9 @@ const OUTER_W = CARD_W + PAD * 2;
 const OUTER_H = CARD_H + PAD * 2;
 
 let cfg = loadConfig();
+if (/^\d+$/.test(process.env.QUOTA_WEATHER_PORT || '')) {
+  cfg.port = Math.min(65535, Math.max(1024, Number(process.env.QUOTA_WEATHER_PORT)));
+}
 
 let scale = clampScale(cfg.scale || 0.8);
 let win = null;
@@ -42,12 +51,18 @@ let dataServer = null;
 let watchTimer = null;
 let weatherSwitchTimer = null;
 let smokeTimer = null;
+let updateCheckTimer = null;
+let updateManager = null;
 let followCodex = cfg.followCodex !== false;
 let userHidden = false; // set true when the user manually hides while Codex runs
-let minimized = false;  // true when the card is collapsed to the floating orb
-let cardBounds = null;  // remembered card window bounds, to restore after un-minimizing
+// three view modes, cycled by the header button: full card → vertical mini
+// card (~1/8 area) → crystal-ball orb → back to card.
+let viewMode = 'card';   // 'card' | 'mini' | 'orb'
+let cardBounds = null;   // remembered card window bounds, to restore later
 
-const ORB = 76; // floating-orb window size in px (square)
+const MINI_W = 172;      // vertical mini-card (roughly 1/8 the card's area)
+const MINI_H = 250;
+const ORB = 128;         // crystal-ball orb (square)
 
 function clampScale(s) {
   const min = cfg.minScale || 0.5;
@@ -125,6 +140,8 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(scale);
     resetWeatherSwitchTimer();
+    markBootSuccessful();
+    if (updateManager) win.webContents.send('quota:update-status', updateManager.getStatus());
     if (SMOKE_MODE) {
       win.webContents.executeJavaScript(`({
         theme: document.getElementById('quota-app-container').dataset.theme,
@@ -151,9 +168,9 @@ function createWindow() {
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
   win.on('resize', () => {
-    // The compact orb is a temporary window shape, not a card resize. Persisting
-    // its 76 px width would clamp and overwrite the user's card scale with 0.5.
-    if (!win || minimized) return;
+    // The compact mini/orb modes are temporary window shapes, not card resizes.
+    // Persisting their tiny width would clamp and overwrite the card scale.
+    if (!win || viewMode !== 'card') return;
     const [cw] = win.getContentSize();
     scale = clampScale(cw / OUTER_W);
     win.webContents.setZoomFactor(scale);
@@ -182,42 +199,63 @@ function togglePanel() {
   else { showPanel(); }
 }
 
-// ---- minimize to floating orb / restore to card --------------------------
-// Minimizing shrinks the window to a small square orb docked near where the
-// card was; the renderer switches to its mini view (shows the % in a ball).
-// Clicking the orb (renderer sends quota:restore) expands back to the card.
+// ---- view modes: card / mini card / crystal-ball orb ----------------------
+// The header cycle button steps card → mini (vertical, ~1/8 area) → orb
+// (crystal ball) → card. Each mode reshapes the window and tells the renderer
+// which layout to show. Card geometry/scale is remembered so returning to the
+// card restores exactly where it was.
 
-function minimizeToOrb() {
-  if (!win || minimized) return;
-  cardBounds = win.getBounds(); // remember where/how big the card was
-  minimized = true;
-  // dock the orb at the card's top-right corner area
+function windowSizeForView(mode) {
+  if (mode === 'orb') return { w: ORB, h: ORB };
+  if (mode === 'mini') return { w: MINI_W, h: MINI_H };
+  return outerSizeFor(scale); // card
+}
+
+function setView(mode) {
+  if (!win || mode === viewMode) return;
+  if (!['card', 'mini', 'orb'].includes(mode)) return;
+  // remember the card's geometry before we leave the card view
+  if (viewMode === 'card') cardBounds = win.getBounds();
+  viewMode = mode;
+
   const area = screen.getPrimaryDisplay().workAreaSize;
-  const ox = Math.min(area.width - ORB - 12, cardBounds.x + cardBounds.width - ORB - 12);
-  const oy = Math.max(12, cardBounds.y + 12);
-  win.setResizable(false);
-  win.setMinimumSize(ORB, ORB);
-  win.setMaximumSize(ORB, ORB);
-  win.setBounds({ x: Math.round(ox), y: Math.round(oy), width: ORB, height: ORB });
-  win.webContents.setZoomFactor(1);
-  if (win.webContents) win.webContents.send('quota:view', 'orb');
+  if (mode === 'card') {
+    const mn = outerSizeFor(cfg.minScale || 0.5);
+    const mx = outerSizeFor(cfg.maxScale || 1.4);
+    win.setMinimumSize(mn.w, mn.h);
+    win.setMaximumSize(mx.w, mx.h);
+    win.setResizable(true);
+    const b = cardBounds || (() => {
+      const s = outerSizeFor(scale);
+      return { x: area.width - s.w - 20, y: area.height - s.h - 20, width: s.w, height: s.h };
+    })();
+    win.setBounds(b);
+    win.webContents.setZoomFactor(scale);
+  } else {
+    // compact modes: fixed size, docked near the card's top-right corner
+    const { w, h } = windowSizeForView(mode);
+    const base = cardBounds || win.getBounds();
+    const ox = Math.min(area.width - w - 12, Math.max(12, base.x + base.width - w - 12));
+    const oy = Math.max(12, base.y + 12);
+    win.setResizable(false);
+    win.setMinimumSize(w, h);
+    win.setMaximumSize(w, h);
+    win.setBounds({ x: Math.round(ox), y: Math.round(oy), width: w, height: h });
+    win.webContents.setZoomFactor(1);
+  }
+  if (win.webContents) win.webContents.send('quota:view', mode);
   updateTrayMenu();
 }
 
-function restoreFromOrb() {
-  if (!win || !minimized) return;
-  minimized = false;
-  const mn = outerSizeFor(cfg.minScale || 0.5);
-  const mx = outerSizeFor(cfg.maxScale || 1.4);
-  win.setMinimumSize(mn.w, mn.h);
-  win.setMaximumSize(mx.w, mx.h);
-  win.setResizable(true);
-  const b = cardBounds || (() => { const s = outerSizeFor(scale); const a = screen.getPrimaryDisplay().workAreaSize; return { x: a.width - s.w - 20, y: a.height - s.h - 20, width: s.w, height: s.h }; })();
-  win.setBounds(b);
-  win.webContents.setZoomFactor(scale);
-  if (win.webContents) win.webContents.send('quota:view', 'card');
-  updateTrayMenu();
+function cycleView() {
+  const order = ['card', 'mini', 'orb'];
+  const i = order.indexOf(viewMode);
+  setView(order[(i + 1) % order.length]);
 }
+
+// compatibility wrappers used by the smoke test and legacy IPC
+function minimizeToOrb() { setView('orb'); }
+function restoreFromOrb() { setView('card'); }
 
 // ---- scale persistence ----------------------------------------------------
 
@@ -234,7 +272,7 @@ function persistScale(s) {
 function persistWindowPosition() {
   clearTimeout(persistWindowTimer);
   persistWindowTimer = setTimeout(() => {
-    if (!win || minimized) return;
+    if (!win || viewMode !== 'card') return;
     try {
       const b = win.getBounds();
       cfg = updateConfig({ windowX: b.x, windowY: b.y });
@@ -385,6 +423,101 @@ function buildTray() {
   updateTrayMenu();
 }
 
+function updateMenuTemplate() {
+  if (!updateManager) {
+    return [{ label: '版本信息加载中 / Loading version', enabled: false }];
+  }
+  const status = updateManager.getStatus();
+  const items = [
+    { label: `当前版本 v${status.currentVersion}`, enabled: false },
+  ];
+  if (!status.managed) {
+    items.push(
+      { label: '重新运行安装命令以启用面板更新', enabled: false },
+      { label: '检查 GitHub 版本 / Check releases', click: () => updateManager.checkForUpdates() }
+    );
+    return items;
+  }
+
+  if (status.phase === 'checking') {
+    items.push({ label: '正在检查更新… / Checking…', enabled: false });
+  } else if (status.phase === 'downloading') {
+    items.push({ label: `正在下载 ${status.progress || 0}%`, enabled: false });
+  } else if (status.phase === 'verifying' || status.phase === 'installing') {
+    items.push({ label: '正在校验并安装… / Verifying…', enabled: false });
+  } else if (status.phase === 'ready') {
+    items.push({
+      label: `重启并切换到 v${status.targetVersion}`,
+      click: () => updateManager.restartToApply().catch(showUpdateError),
+    });
+  } else if (status.phase === 'available') {
+    items.push({
+      label: `下载 v${status.targetVersion}`,
+      click: () => updateManager.downloadLatest().catch(showUpdateError),
+    });
+  } else {
+    items.push({ label: '检查更新 / Check for updates', click: () => updateManager.checkForUpdates() });
+  }
+
+  if (status.phase === 'error' && status.message) {
+    items.push({ label: `更新失败：${status.message}`, enabled: false });
+  } else if (status.phase === 'up-to-date') {
+    items.push({ label: '已是最新版本 / Up to date', enabled: false });
+  }
+
+  const history = [];
+  for (const entry of status.installed || []) {
+    if (entry.current) {
+      history.push({ label: `✓ v${entry.version}（当前）`, enabled: false });
+    } else if (!entry.switchable) {
+      history.push({ label: `v${entry.version}（旧版应急备份）`, enabled: false });
+    } else {
+      history.push({
+        label: `v${entry.version}${entry.previous ? '（上一版）' : ''} — 回退`,
+        click: () => confirmVersionSwitch(entry.version, true),
+      });
+    }
+  }
+  for (const release of (status.releases || []).filter((entry) => !entry.installed).slice(0, 6)) {
+    history.push({
+      label: release.downloadable ? `v${release.version} — 下载并切换` : `v${release.version} — 无此平台安装包`,
+      enabled: release.downloadable,
+      click: () => confirmVersionSwitch(release.version, false),
+    });
+  }
+  if (!history.length) history.push({ label: '检查更新后显示历史版本', enabled: false });
+  items.push({ type: 'separator' }, { label: '历史版本 / Version history', submenu: history });
+  return items;
+}
+
+function showUpdateError(error) {
+  const message = error && error.message ? error.message : String(error);
+  dialog.showErrorBox('Codex Quota Weather', message);
+}
+
+async function confirmVersionSwitch(version, installed) {
+  const result = await dialog.showMessageBox({
+    type: 'question',
+    title: installed ? '回退版本' : '下载历史版本',
+    message: installed
+      ? `确定要重启并切换到 v${version} 吗？`
+      : `确定要下载 v${version}，完成后重启切换吗？`,
+    detail: '当前设置会先备份；如果目标版本启动失败，程序会自动恢复上一版。',
+    buttons: ['继续', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (result.response !== 0) return;
+  try {
+    if (installed) updateManager.prepareSwitch(version);
+    else await updateManager.downloadVersion(version);
+    if (updateManager.getStatus().phase === 'ready') await updateManager.restartToApply();
+  } catch (error) {
+    showUpdateError(error);
+  }
+}
+
 function updateTrayMenu() {
   if (!tray) return;
   const visible = !!(win && win.isVisible());
@@ -413,6 +546,7 @@ function updateTrayMenu() {
         { label: '每 30 分钟 / 30 minutes', type: 'radio', checked: weatherInterval === 30 * 60 * 1000, click: () => setWeatherSwitchInterval(30 * 60 * 1000) },
       ],
     },
+    { label: '版本与更新 / Version & updates', submenu: updateMenuTemplate() },
     { type: 'separator' },
     { label: '退出 / Quit', click: () => quitAll() },
   ]);
@@ -434,21 +568,33 @@ ipcMain.on('quota:scale', (_e, delta) => applyScale(scale + delta));
 ipcMain.handle('quota:get-scale', () => scale);
 ipcMain.on('quota:minimize', () => minimizeToOrb());
 ipcMain.on('quota:restore', () => restoreFromOrb());
+ipcMain.on('quota:cycle-view', () => cycleView());
+ipcMain.on('quota:set-view', (_e, mode) => setView(mode));
 ipcMain.on('quota:weather-interaction', () => resetWeatherSwitchTimer());
+ipcMain.handle('quota:get-update-status', () => updateManager ? updateManager.getStatus() : null);
+ipcMain.handle('quota:check-update', () => updateManager ? updateManager.checkForUpdates() : null);
+ipcMain.handle('quota:download-update', (_event, version) => (
+  updateManager ? updateManager.downloadVersion(version || undefined) : null
+));
+ipcMain.handle('quota:restart-update', () => updateManager ? updateManager.restartToApply() : null);
+ipcMain.handle('quota:switch-version', (_event, version) => (
+  updateManager ? updateManager.prepareSwitch(version) : null
+));
 
 // orb drag: move the whole (tiny) window following the OS cursor
 let orbDragTimer = null;
 let orbDragOffset = null;
 ipcMain.on('quota:orb-drag-start', () => {
-  if (!win || !minimized) return;
+  if (!win || viewMode === 'card') return;
   const b = win.getBounds();
   const c = screen.getCursorScreenPoint();
   orbDragOffset = { dx: c.x - b.x, dy: c.y - b.y };
+  const { w, h } = windowSizeForView(viewMode);
   if (orbDragTimer) clearInterval(orbDragTimer);
   orbDragTimer = setInterval(() => {
-    if (!win || !minimized || !orbDragOffset) return;
+    if (!win || viewMode === 'card' || !orbDragOffset) return;
     const p = screen.getCursorScreenPoint();
-    win.setBounds({ x: p.x - orbDragOffset.dx, y: p.y - orbDragOffset.dy, width: ORB, height: ORB });
+    win.setBounds({ x: p.x - orbDragOffset.dx, y: p.y - orbDragOffset.dy, width: w, height: h });
   }, 16);
 });
 ipcMain.on('quota:orb-drag-end', () => {
@@ -521,6 +667,7 @@ function quitAll() {
   if (watchTimer) clearInterval(watchTimer);
   if (weatherSwitchTimer) clearInterval(weatherSwitchTimer);
   if (smokeTimer) clearTimeout(smokeTimer);
+  if (updateCheckTimer) clearInterval(updateCheckTimer);
   try { if (dataServer) dataServer.close(); } catch (_) {}
   if (tray) { tray.destroy(); tray = null; }
   app.quit();
@@ -539,7 +686,23 @@ if (!gotLock) {
     const { startDataServer } = require('./server.js');
     dataServer = startDataServer({ port: cfg.port, standalone: false });
 
+    updateManager = new UpdateManager({
+      appDir: APP_DIR,
+      currentVersion: app.getVersion(),
+      onRestart: () => quitAll(),
+    });
+    updateManager.on('status', (status) => {
+      updateTrayMenu();
+      if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send('quota:update-status', status);
+      }
+    });
+
     buildTray();
+    // A managed version switch must prove that its hidden renderer can load even
+    // when Codex itself is not running and the normal watchdog would keep the
+    // panel closed. The launcher waits for the marker written in did-finish-load.
+    if (process.env.QUOTA_WEATHER_BOOT_TOKEN && !SMOKE_MODE) createWindow();
     if (SMOKE_MODE) {
       showPanel();
       smokeTimer = setTimeout(() => {
@@ -548,6 +711,8 @@ if (!gotLock) {
       }, 15000);
     } else {
       startWatchdog();
+      setTimeout(() => updateManager.checkForUpdates(), 15000);
+      updateCheckTimer = setInterval(() => updateManager.checkForUpdates(), 6 * 60 * 60 * 1000);
     }
 
     // If Codex is already running at launch, the first watchTick shows the panel.

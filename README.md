@@ -25,6 +25,7 @@
 - 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从 Windows 系统托盘或 macOS 菜单栏手动控制。
 - 原生支持 Windows 10/11、Apple Silicon Mac 和 Intel Mac。
 - 支持置顶、缩放、拖动、缩成悬浮球、中英文和减少动态效果。
+- 支持悬浮窗内下载更新、托盘历史版本回退和新版本启动失败自动恢复。
 - 所有数据只在本机处理，本地服务仅监听 `127.0.0.1`。
 
 ## 一行安装
@@ -38,8 +39,8 @@ curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cm
 ```
 
 这条命令先下载只有一行的 [install.cmd](install.cmd)，再调用完整的
-[install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗；
-以后重复运行同一条 CMD 命令即可更新，个人配置不会被覆盖。
+[install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗。
+从 `v2.3.0` 开始只需安装一次，后续版本可直接在悬浮窗或托盘菜单中下载；旧版用户再运行一次该命令即可完成目录迁移。
 
 也可以在 PowerShell 中运行：
 
@@ -58,19 +59,40 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 两个安装器都无需管理员权限，也不要求电脑预先安装 Node.js。它们会：
 
 1. 下载最新源码；
-2. 在应用目录安装独立的 Node.js 24 和 Electron；
+2. 安装独立的 Node.js 24、Electron、固定启动器和多版本目录；
 3. 校验 Node.js 下载文件的 SHA-256；
 4. 安装依赖并执行烟雾测试；
 5. 创建 Windows Startup 或 macOS LaunchAgent 开机启动项；
-6. 启动悬浮窗。
+6. 启动悬浮窗，并保留最近 5 个可回退版本。
 
 | 平台 | 应用目录 | 个人设置 |
 | --- | --- | --- |
 | Windows | `%LOCALAPPDATA%\Programs\CodexQuotaWeather` | `%APPDATA%\CodexQuotaWeather\config.json` |
 | macOS | `~/Library/Application Support/CodexQuotaWeather` | 同目录下的 `config.json` |
 
-重复运行对应命令即可更新，窗口位置、缩放和自动天气设置会保留。执行前可先查看
+首次安装后，窗口位置、缩放和自动天气设置会在升级、回退时保留。执行前可先查看
 [CMD 安装入口](install.cmd)、[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
+
+## 面板更新与历史版本
+
+- 点击悬浮窗顶部的下载图标，可以检查、下载并重启安装新版本。
+- 右键托盘/菜单栏图标，打开“版本与更新”，可以看到当前版本、下载进度及历史版本。
+- 新版本会先下载到独立目录，校验 GitHub Release 的 SHA-256，再执行烟雾测试；不会覆盖正在运行的版本。
+- 切换后 30 秒内未能正常启动时，固定启动器会自动恢复上一版本和切换前的配置备份。
+- 默认保留最近 5 个版本。已安装版本可以立即回退，远端历史版本可以先下载再切换。
+- 从 `v2.3.0` 起的版本可在菜单中双向切换；迁移时保留的更早版本只作为新版启动失败时的应急自动回退。
+
+```text
+CodexQuotaWeather/
+├─ launcher/             固定启动器和开机启动入口
+├─ runtime/              私有 Node.js 运行时
+├─ versions/2.3.0/       各版本应用与 Electron
+├─ downloads/            临时下载
+└─ state/update-state.json
+```
+
+每个正式版本由 Git Tag 触发 GitHub Actions，自动生成 Windows x64、macOS Apple Silicon、macOS Intel 三个平台包、
+`update-manifest.json` 和 `SHA256SUMS.txt`，然后发布到同名 GitHub Release。
 
 ### Windows CMD 代理安装
 
@@ -119,11 +141,12 @@ npm run setup:electron
 | 点击左侧额度圆环 | 切换到下一种天气 |
 | 点击顶部天气名称 | 更换当前天气的背景 |
 | 点击 `中 / EN` | 切换界面语言 |
+| 点击下载图标 | 检查更新、查看进度、重启安装或选择历史版本 |
 | 点击 `−` | 缩成只显示周额度的悬浮球 |
 | 点击铃铛图标 | 开关窗口置顶 |
 | 点击 `×` | 隐藏面板，程序仍留在系统托盘 |
 | 左键托盘/菜单栏图标 | 显示或隐藏面板 |
-| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气或退出 |
+| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气、更新/回退或退出 |
 | `Ctrl + 滚轮` / 拖动边缘 | 调整面板大小 |
 
 “跟随 Codex”会识别 Windows 的 `Codex.exe` / `ChatGPT.exe`，以及 macOS 的
@@ -252,25 +275,25 @@ export HTTP_PROXY=http://127.0.0.1:10808
 Windows CMD：
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\uninstall.ps1"
 ```
 
 保留个人设置：
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\uninstall.ps1" -KeepSettings
 ```
 
 macOS：
 
 ```bash
-bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh"
+bash "$HOME/Library/Application Support/CodexQuotaWeather/uninstall-macos.sh"
 ```
 
 macOS 保留个人设置：
 
 ```bash
-bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh" --keep-settings
+bash "$HOME/Library/Application Support/CodexQuotaWeather/uninstall-macos.sh" --keep-settings
 ```
 
 ## 开发与验证
@@ -289,6 +312,15 @@ python scripts/build-doc-gifs.py
 本地 HTTP API 和演示渲染入口。`npm run test:electron` 会验证天气画布，
 `npm run test:app` 会启动完整托盘主进程和透明窗口。GitHub Actions 会在 Windows x64、Apple Silicon macOS 和
 Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
+
+发布新版本时，先同步 `package.json` 与 `package-lock.json` 的版本号，再推送同名 Tag：
+
+```powershell
+git tag -a v2.3.0 -m "Release v2.3.0"
+git push origin v2.3.0
+```
+
+`.github/workflows/release.yml` 会完成跨平台打包、校验清单生成和 GitHub Release 发布。
 
 ## 许可证
 

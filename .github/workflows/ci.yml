@@ -38,7 +38,8 @@ jobs:
         shell: powershell
         run: |
           $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\CodexQuotaWeather'
-          $installedPackage = Get-Content (Join-Path $installRoot 'app\package.json') -Raw | ConvertFrom-Json
+          $state = Get-Content (Join-Path $installRoot 'state\update-state.json') -Raw | ConvertFrom-Json
+          $installedPackage = Get-Content (Join-Path $installRoot "versions\$($state.currentVersion)\package.json") -Raw | ConvertFrom-Json
           $sourcePackage = Get-Content package.json -Raw | ConvertFrom-Json
           if ($installedPackage.version -ne $sourcePackage.version) {
             throw "Installed $($installedPackage.version), expected $($sourcePackage.version)"
@@ -66,8 +67,11 @@ jobs:
           CODEX_QUOTA_WEATHER_NO_LAUNCH: "1"
         run: |
           bash ./install-macos.sh
-          test -x "$CODEX_QUOTA_WEATHER_INSTALL_DIR/app/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+          CURRENT=$("$CODEX_QUOTA_WEATHER_INSTALL_DIR/runtime/node/bin/node" -p \
+            "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).currentVersion" \
+            "$CODEX_QUOTA_WEATHER_INSTALL_DIR/state/update-state.json")
+          test -x "$CODEX_QUOTA_WEATHER_INSTALL_DIR/versions/$CURRENT/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
           "$CODEX_QUOTA_WEATHER_INSTALL_DIR/runtime/node/bin/node" \
-            "$CODEX_QUOTA_WEATHER_INSTALL_DIR/app/scripts/smoke-test.js"
+            "$CODEX_QUOTA_WEATHER_INSTALL_DIR/versions/$CURRENT/scripts/smoke-test.js"
           bash ./uninstall-macos.sh
           test ! -d "$CODEX_QUOTA_WEATHER_INSTALL_DIR"

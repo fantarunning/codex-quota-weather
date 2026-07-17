@@ -14,7 +14,10 @@ contextBridge.exposeInMainWorld('quotaShell', {
   // then follows the OS cursor and resizes the window (aspect-locked).
   resizeStart: (edge) => ipcRenderer.send('quota:resize-start', edge),
   resizeEnd: () => ipcRenderer.send('quota:resize-end'),
-  // minimize to floating orb / restore to card
+  // three-state view: card → mini → orb → card
+  cycleView: () => ipcRenderer.send('quota:cycle-view'),
+  setView: (mode) => ipcRenderer.send('quota:set-view', mode),
+  // minimize to floating orb / restore to card (legacy, still used)
   minimize: () => ipcRenderer.send('quota:minimize'),
   restore: () => ipcRenderer.send('quota:restore'),
   onView: (cb) => ipcRenderer.on('quota:view', (_e, v) => cb(v)),
@@ -22,4 +25,10 @@ contextBridge.exposeInMainWorld('quotaShell', {
   orbDragEnd: () => ipcRenderer.send('quota:orb-drag-end'),
   onNextWeather: (cb) => ipcRenderer.on('quota:next-weather', () => cb()),
   weatherInteracted: () => ipcRenderer.send('quota:weather-interaction'),
+  getUpdateStatus: () => ipcRenderer.invoke('quota:get-update-status'),
+  checkUpdate: () => ipcRenderer.invoke('quota:check-update'),
+  downloadUpdate: (version) => ipcRenderer.invoke('quota:download-update', version),
+  restartUpdate: () => ipcRenderer.invoke('quota:restart-update'),
+  switchVersion: (version) => ipcRenderer.invoke('quota:switch-version', version),
+  onUpdateStatus: (cb) => ipcRenderer.on('quota:update-status', (_e, value) => cb(value)),
 });

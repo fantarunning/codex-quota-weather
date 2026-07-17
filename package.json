@@ -1,17 +1,19 @@
 {
   "name": "codex-quota-weather",
-  "version": "2.2.5",
+  "version": "2.3.0",
   "description": "A live Codex quota tray panel with animated weather scenes for Windows and macOS.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "postinstall": "node scripts/install-electron.js",
     "setup:electron": "node scripts/install-electron.js",
-    "test": "node scripts/smoke-test.js",
+    "test": "node scripts/smoke-test.js && node scripts/update-test.js",
     "test:electron": "electron scripts/electron-smoke.js",
     "test:app": "node scripts/app-smoke.js",
     "test:live": "node liveUsage.js",
-    "capture:docs": "electron scripts/capture-docs.js"
+    "capture:docs": "electron scripts/capture-docs.js",
+    "package:release": "node scripts/package-release.js",
+    "manifest:release": "node scripts/create-update-manifest.js release"
   },
   "repository": {
     "type": "git",

@@ -40,6 +40,26 @@ async function main() {
     assert.strictEqual(state.theme, "snow");
     assert.strictEqual(state.percent.trim(), "86%");
     assert.strictEqual(state.title.trim(), "Codex Quota");
+    const updateUi = await win.webContents.executeJavaScript(`(() => {
+      renderUpdateState({
+        managed: true,
+        phase: 'available',
+        currentVersion: '2.3.0',
+        targetVersion: '2.3.1',
+        progress: 0,
+        installed: [{ version: '2.3.0', current: true }],
+        releases: [{ version: '2.3.1', installed: false, downloadable: true }]
+      });
+      document.getElementById('update-popover').classList.add('open');
+      return {
+        message: document.getElementById('update-message').textContent,
+        action: document.getElementById('update-primary').textContent,
+        historyRows: document.querySelectorAll('.update-version').length
+      };
+    })()`);
+    assert(updateUi.message.includes('2.3.1'), "update popover did not render the target version");
+    assert(updateUi.action.includes('2.3.1'), "update action did not render the target version");
+    assert(updateUi.historyRows >= 2, "update history did not render local and remote versions");
     // Chromium can throttle a never-shown transparent window on some hosts.
     // Show it outside the visible desktop so a real compositor frame is produced.
     win.setPosition(-10000, -10000);

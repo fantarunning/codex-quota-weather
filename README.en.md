@@ -20,6 +20,7 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 - Follows Codex Desktop (`ChatGPT` / `ChatGPT.exe`) and Codex CLI (`Codex` / `Codex.exe`).
 - Supports Windows 10/11, Apple Silicon Macs, and Intel Macs.
 - Supports pinning, resizing, a compact floating orb, Chinese/English, and reduced motion.
+- Supports in-panel updates, tray-based version rollback, and automatic recovery from a failed update.
 - Processes data locally and binds its HTTP service only to `127.0.0.1`.
 
 ## One-command install
@@ -34,8 +35,9 @@ curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cm
 
 This downloads the one-line [install.cmd](install.cmd) entry point, which calls the
 full [install.ps1](install.ps1) installer. It does not permanently change the
-PowerShell execution policy. Rerun the same CMD command to update; user settings
-are preserved.
+PowerShell execution policy. Starting with `v2.3.0`, this is a one-time install;
+later releases can be downloaded from the panel or tray. Existing users should run
+the command once more to migrate from the old single-version layout.
 
 Or run in PowerShell:
 
@@ -51,18 +53,39 @@ Run in Terminal:
 curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install-macos.sh | bash
 ```
 
-Neither installer requires administrator access or a preinstalled Node.js. It downloads
-a private Node.js 24 runtime for the current architecture, verifies its SHA-256 checksum,
-installs Electron, runs the smoke test, enables login startup, and launches the panel.
+Neither installer requires administrator access or a preinstalled Node.js. It installs
+a private Node.js 24 runtime, a stable launcher, Electron, and versioned application
+directories. It verifies downloads, runs the smoke test, enables login startup, and launches the panel.
 
 | Platform | Application | User settings |
 | --- | --- | --- |
 | Windows | `%LOCALAPPDATA%\Programs\CodexQuotaWeather` | `%APPDATA%\CodexQuotaWeather\config.json` |
 | macOS | `~/Library/Application Support/CodexQuotaWeather` | `config.json` in the same directory |
 
-Run the same command again to update without losing window position or preferences.
+Updates and rollbacks preserve window position and preferences.
 You can review the [CMD entry point](install.cmd), [Windows installer](install.ps1), or
 [macOS installer](install-macos.sh) before executing it.
+
+## In-panel updates and rollback
+
+- Click the download icon in the panel header to check, download, and restart into an update.
+- Open **Version & updates** from the tray/menu-bar icon to see download progress and version history.
+- Each release is downloaded into its own directory, verified with the GitHub Release SHA-256 digest, and smoke-tested before it becomes selectable.
+- If the new version does not report a healthy renderer within 30 seconds, the stable launcher restores the previous version and configuration backup.
+- The latest five versions are retained. Installed releases switch immediately; older remote releases can be downloaded on demand.
+- Versions from `v2.3.0` onward can switch in both directions. A migrated pre-2.3 release is kept only as an automatic emergency fallback.
+
+```text
+CodexQuotaWeather/
+├─ launcher/             stable startup entry point
+├─ runtime/              private Node.js runtime
+├─ versions/2.3.0/       versioned app and Electron runtime
+├─ downloads/            temporary downloads
+└─ state/update-state.json
+```
+
+A version tag triggers GitHub Actions to publish Windows x64, macOS Apple Silicon,
+and macOS Intel archives plus `update-manifest.json` and `SHA256SUMS.txt`.
 
 ### Windows CMD install through a proxy
 
@@ -113,11 +136,12 @@ npm run setup:electron
 | Click the quota ring | Switch to the next weather scene |
 | Click the weather name | Change the current scene's background |
 | Click `中 / EN` | Switch language |
+| Click the download icon | Check/download updates, restart, or select a historical version |
 | Click `−` | Collapse to a weekly-quota orb |
 | Click the bell | Toggle always-on-top |
 | Click `×` | Hide the panel but keep the tray app running |
 | Left-click the tray/menu bar icon | Show or hide the panel |
-| Right-click the tray/menu bar icon | Configure Codex following, weather rotation, or quit |
+| Right-click the tray/menu bar icon | Configure following, weather, update/rollback, or quit |
 | `Ctrl + wheel` / drag an edge | Resize the panel |
 
 ## What the numbers mean
@@ -204,19 +228,19 @@ PowerShell one-command installer above; no separate curl installation is require
 Windows Command Prompt:
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\uninstall.ps1"
 ```
 
 Append `-KeepSettings` to preserve preferences:
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\uninstall.ps1" -KeepSettings
 ```
 
 macOS:
 
 ```bash
-bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh"
+bash "$HOME/Library/Application Support/CodexQuotaWeather/uninstall-macos.sh"
 ```
 
 Add `--keep-settings` to preserve preferences.
@@ -237,6 +261,16 @@ The smoke tests validate JavaScript syntax, the Electron runtime, all 15 bundled
 backgrounds, five themes, the local HTTP API, a hidden renderer, and the complete
 tray application process.
 GitHub Actions repeats them on Windows x64, Apple Silicon macOS, and Intel macOS.
+
+To publish, update the package version and push the matching annotated tag:
+
+```powershell
+git tag -a v2.3.0 -m "Release v2.3.0"
+git push origin v2.3.0
+```
+
+`.github/workflows/release.yml` builds the three archives, generates checksums,
+and publishes the GitHub Release automatically.
 
 ## License
 

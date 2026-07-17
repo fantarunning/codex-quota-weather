@@ -11,7 +11,6 @@ function Resolve-FullPath([string]$Value) {
 }
 
 $installRoot = Resolve-FullPath $InstallDir
-$appDir = Join-Path $installRoot "app"
 $localPrograms = Resolve-FullPath (Join-Path $env:LOCALAPPDATA "Programs")
 if (
   -not $installRoot.StartsWith($localPrograms, [StringComparison]::OrdinalIgnoreCase) -or
@@ -25,8 +24,8 @@ $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Star
   Remove-Item -LiteralPath (Join-Path $startupDir $_) -Force -ErrorAction SilentlyContinue
 }
 
-$needle = (Resolve-FullPath $appDir).ToLowerInvariant()
-Get-CimInstance Win32_Process -Filter "Name = 'electron.exe'" -ErrorAction SilentlyContinue |
+$needle = $installRoot.ToLowerInvariant()
+Get-CimInstance Win32_Process -Filter "Name = 'electron.exe' OR Name = 'node.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($needle) } |
   ForEach-Object {
     Invoke-CimMethod -InputObject $_ -MethodName Terminate -ErrorAction SilentlyContinue | Out-Null

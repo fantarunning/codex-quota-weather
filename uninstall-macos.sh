@@ -27,9 +27,8 @@ fi
 launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
 rm -f "$PLIST"
 
-APP_DIR="$INSTALL_DIR/app"
 if command -v pgrep >/dev/null 2>&1; then
-  PIDS=$(pgrep -f "$APP_DIR" 2>/dev/null || true)
+  PIDS=$(pgrep -f "$INSTALL_DIR" 2>/dev/null || true)
   if [ -n "$PIDS" ]; then
     printf '%s\n' "$PIDS" | while IFS= read -r PID; do
       kill "$PID" 2>/dev/null || true

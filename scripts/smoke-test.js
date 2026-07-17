@@ -61,6 +61,8 @@ async function main() {
     "platform.js",
     "preload.js",
     "settings.js",
+    "update-manager.js",
+    "launcher/launcher.js",
   ]) {
     const source = fs
       .readFileSync(path.join(ROOT, file), "utf8")
@@ -76,6 +78,8 @@ async function main() {
     assert(html.includes(`id: '${theme}'`), `renderer is missing theme ${theme}`);
   }
   assert(html.includes("DEMO_MODE"), "renderer demo mode is missing");
+  assert(html.includes('id="btn-update"'), "renderer update button is missing");
+  assert(html.includes('id="update-popover"'), "renderer update popover is missing");
 
   const fixtureRoot = path.join(ROOT, ".tmp", "cross-midnight-sessions");
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -183,7 +187,7 @@ async function main() {
     await new Promise((resolve) => server.close(resolve));
   }
 
-  fs.rmSync(path.join(ROOT, ".tmp"), { recursive: true, force: true });
+  fs.rmSync(path.join(ROOT, ".tmp", "test-settings"), { recursive: true, force: true });
   console.log("Smoke test passed: syntax, assets, local API, and demo renderer.");
 }
 

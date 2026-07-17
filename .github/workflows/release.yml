@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS Apple Silicon
+            os: macos-latest
+          - name: macOS Intel
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate tag and package version
+        shell: bash
+        run: |
+          test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:electron
+      - run: npm run test:app
+      - run: npm audit --audit-level=high
+      - run: npm run package:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}-${{ runner.arch }}
+          path: release/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Create manifest and checksums
+        run: node scripts/create-update-manifest.js release
+      - name: Publish immutable version assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Codex Quota Weather $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
