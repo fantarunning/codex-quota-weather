@@ -82,6 +82,8 @@ async function main() {
   assert(html.includes('id="btn-update"'), "renderer update button is missing");
   assert(html.includes('id="update-popover"'), "renderer update popover is missing");
   assert(html.includes('id="update-skip"'), "renderer skip-update action is missing");
+  assert(html.includes('id="mini-calls"'), "portrait mini metrics are incomplete");
+  assert(html.includes("mode === 'mini' ? { width: 240, height: 520 }"), "portrait weather viewport is missing");
   const mainSource = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
   assert(mainSource.includes("quota:skip-update"), "skip-update IPC handler is missing");
   assert(!mainSource.includes("版本与更新 / Version & updates"), "tray still contains the version/update menu");

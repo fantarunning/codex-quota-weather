@@ -98,8 +98,51 @@ async function main() {
     }
     assert(size.width >= 680 && size.height >= 380, "captured renderer size is incomplete");
     assert(colorCount > 8, "captured renderer image is blank or uniform");
+
+    win.setContentSize(240, 520);
+    await win.webContents.executeJavaScript("setView('mini')");
+    await wait(600);
+    const miniState = await win.webContents.executeJavaScript(`({
+      view: document.body.className,
+      miniDisplay: getComputedStyle(document.getElementById('mini')).display,
+      sceneDisplay: getComputedStyle(document.getElementById('quota-app-container')).display,
+      canvasWidth: document.getElementById('weather-canvas').width,
+      canvasHeight: document.getElementById('weather-canvas').height,
+      percent: document.getElementById('mini-pct').textContent,
+      used: document.getElementById('mini-used').textContent,
+      calls: document.getElementById('mini-calls').textContent
+    })`);
+    assert(miniState.view.includes("view-mini"), "portrait view class was not applied");
+    assert.strictEqual(miniState.miniDisplay, "flex", "portrait layout is hidden");
+    assert.notStrictEqual(miniState.sceneDisplay, "none", "weather scene is hidden in portrait view");
+    assert.strictEqual(miniState.canvasWidth, 240, "portrait weather canvas width is incorrect");
+    assert.strictEqual(miniState.canvasHeight, 520, "portrait weather canvas height is incorrect");
+    assert.strictEqual(miniState.percent.trim(), "86%");
+    assert.strictEqual(miniState.used.trim(), "20.08M");
+    assert.strictEqual(miniState.calls.trim(), "188");
+    const portraitThemes = ["rain", "meteor", "blossom", "snow", "beach"];
+    for (let themeIndex = 0; themeIndex < portraitThemes.length; themeIndex += 1) {
+      const themeState = await win.webContents.executeJavaScript(`(async () => {
+        await performTransition(${themeIndex}, 0);
+        return {
+          theme: document.getElementById('quota-app-container').dataset.theme,
+          background: document.getElementById('bg-active').style.backgroundImage,
+          particleCount: particles.length,
+          canvasWidth: document.getElementById('weather-canvas').width,
+          canvasHeight: document.getElementById('weather-canvas').height
+        };
+      })()`);
+      assert.strictEqual(themeState.theme, portraitThemes[themeIndex], `portrait theme ${portraitThemes[themeIndex]} did not activate`);
+      assert(themeState.background.includes(`${portraitThemes[themeIndex]}-0.jpg`), `portrait background for ${portraitThemes[themeIndex]} is missing`);
+      assert(themeState.particleCount > 0, `portrait effect for ${portraitThemes[themeIndex]} is empty`);
+      assert.strictEqual(themeState.canvasWidth, 240);
+      assert.strictEqual(themeState.canvasHeight, 520);
+    }
+    const miniImage = await win.webContents.capturePage();
+    const miniSize = miniImage.getSize();
+    assert(miniSize.width >= 240 && miniSize.height >= 520, "portrait renderer size is incomplete");
     console.log(
-      `Electron smoke test passed on ${process.platform}/${process.arch}: renderer and canvas are active.`
+      `Electron smoke test passed on ${process.platform}/${process.arch}: card and portrait weather canvases are active.`
     );
   } finally {
     win.destroy();

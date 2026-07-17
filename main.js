@@ -55,13 +55,13 @@ let updateCheckTimer = null;
 let updateManager = null;
 let followCodex = cfg.followCodex !== false;
 let userHidden = false; // set true when the user manually hides while Codex runs
-// three view modes, cycled by the header button: full card → vertical mini
-// card (~1/8 area) → crystal-ball orb → back to card.
+// three view modes, cycled by the header button: full card → portrait weather
+// card → crystal-ball orb → back to card.
 let viewMode = 'card';   // 'card' | 'mini' | 'orb'
 let cardBounds = null;   // remembered card window bounds, to restore later
 
-const MINI_W = 172;      // vertical mini-card (roughly 1/8 the card's area)
-const MINI_H = 250;
+const MINI_W = 240;      // portrait card based on the compact reference layout
+const MINI_H = 520;
 const ORB = 128;         // crystal-ball orb (square)
 
 function clampScale(s) {
@@ -151,6 +151,12 @@ function createWindow() {
           throw new Error('renderer state is incomplete');
         }
         const expectedScale = scale;
+        setView('mini');
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const [miniWidth, miniHeight] = win.getContentSize();
+        if (miniWidth !== MINI_W || miniHeight !== MINI_H) {
+          throw new Error(`portrait view size is ${miniWidth}x${miniHeight}, expected ${MINI_W}x${MINI_H}`);
+        }
         minimizeToOrb();
         await new Promise((resolve) => setTimeout(resolve, 900));
         if (Math.abs(Number(loadConfig().scale) - expectedScale) > 0.001) {
@@ -168,7 +174,7 @@ function createWindow() {
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
   win.on('resize', () => {
-    // The compact mini/orb modes are temporary window shapes, not card resizes.
+    // The compact portrait/orb modes are temporary window shapes, not card resizes.
     // Persisting their tiny width would clamp and overwrite the card scale.
     if (!win || viewMode !== 'card') return;
     const [cw] = win.getContentSize();
@@ -199,8 +205,8 @@ function togglePanel() {
   else { showPanel(); }
 }
 
-// ---- view modes: card / mini card / crystal-ball orb ----------------------
-// The header cycle button steps card → mini (vertical, ~1/8 area) → orb
+// ---- view modes: card / portrait card / crystal-ball orb ------------------
+// The header cycle button steps card → mini (portrait weather card) → orb
 // (crystal ball) → card. Each mode reshapes the window and tells the renderer
 // which layout to show. Card geometry/scale is remembered so returning to the
 // card restores exactly where it was.
@@ -232,11 +238,13 @@ function setView(mode) {
     win.setBounds(b);
     win.webContents.setZoomFactor(scale);
   } else {
-    // compact modes: fixed size, docked near the card's top-right corner
+    // compact modes: fixed size, docked near the card while staying fully on-screen
     const { w, h } = windowSizeForView(mode);
     const base = cardBounds || win.getBounds();
-    const ox = Math.min(area.width - w - 12, Math.max(12, base.x + base.width - w - 12));
-    const oy = Math.max(12, base.y + 12);
+    const display = screen.getDisplayNearestPoint({ x: base.x, y: base.y });
+    const workArea = display.workArea;
+    const ox = Math.min(workArea.x + workArea.width - w - 12, Math.max(workArea.x + 12, base.x + base.width - w - 12));
+    const oy = Math.min(workArea.y + workArea.height - h - 12, Math.max(workArea.y + 12, base.y + 12));
     win.setResizable(false);
     win.setMinimumSize(w, h);
     win.setMaximumSize(w, h);

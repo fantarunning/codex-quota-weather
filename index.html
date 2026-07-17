@@ -33,7 +33,12 @@
         #orb, #mini { display: none; }
         body.view-card #quota-app-container { display: block; }
         body.view-card #orb, body.view-card #mini { display: none; }
-        body.view-mini #quota-app-container, body.view-mini #orb, body.view-mini .rz { display: none; }
+        body.view-mini #orb, body.view-mini .rz { display: none; }
+        body.view-mini #quota-app-container {
+            display: block; position: fixed; inset: 0; width: auto; height: auto; z-index: 0;
+            border-radius: 30px; opacity: 1; animation: none;
+        }
+        body.view-mini #quota-app-container .content { display: none; }
         body.view-mini #mini { display: flex; }
         body.view-orb #quota-app-container, body.view-orb #mini, body.view-orb .rz { display: none; }
         body.view-orb #orb { display: flex; }
@@ -79,21 +84,45 @@
             font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,0.7);
         }
 
-        /* ---- vertical mini card (~1/8 of the full card) ---- */
+        /* ---- portrait mini card — the full weather scene remains underneath ---- */
         #mini {
-            position: fixed; inset: 0;
-            flex-direction: column; -webkit-app-region: drag;
-            border-radius: 18px; overflow: hidden; color: #fff; user-select: none;
-            background: linear-gradient(160deg, #10233f 0%, #0a1730 60%, #081222 100%);
-            box-shadow: inset 0 1px 2px rgba(255,255,255,0.18);
+            position: fixed; inset: 0; z-index: 20; box-sizing: border-box;
+            flex-direction: column; align-items: center; -webkit-app-region: drag;
+            border-radius: 30px; overflow: hidden; color: #fff; user-select: none;
+            padding: 31px 24px 24px; cursor: grab;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.22);
         }
-        #mini .mini-body { padding: 14px 14px 12px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
-        #mini .mini-title { font-size: 12px; font-weight: 700; opacity: 0.7; letter-spacing: 0.5px; -webkit-app-region: no-drag; }
-        #mini .mini-pct { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; margin-top: 4px; }
-        #mini .mini-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
-        #mini .mini-rows { margin-top: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
-        #mini .mini-row { display: flex; justify-content: space-between; opacity: 0.9; }
-        #mini .mini-row b { font-weight: 700; font-variant-numeric: tabular-nums; }
+        #mini:active { cursor: grabbing; }
+        #mini::before {
+            content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+            background:
+                linear-gradient(180deg, rgba(6,12,22,0.18) 0%, rgba(5,10,18,0.32) 48%, rgba(3,8,15,0.55) 100%),
+                radial-gradient(circle at 50% 28%, rgba(255,255,255,0.10), rgba(0,0,0,0) 38%);
+        }
+        #mini .mini-top { display: flex; align-items: center; justify-content: center; gap: 8px; height: 28px; text-shadow: 0 2px 10px rgba(0,0,0,0.82); }
+        #mini .mini-brand { font-size: 22px; line-height: 1; font-weight: 820; letter-spacing: -0.55px; }
+        #mini-live-dot {
+            width: 9px; height: 9px; border-radius: 50%; background: #4ADE80;
+            box-shadow: 0 0 11px rgba(74,222,128,0.95); animation: pulse 2s infinite;
+        }
+        #mini-live-dot.offline { background: #F87171; box-shadow: 0 0 10px rgba(248,113,113,0.9); animation: none; }
+        #mini .mini-ring {
+            position: relative; width: 166px; height: 166px; margin-top: 24px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #mini .mini-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+        #mini-ring-fg { filter: drop-shadow(0 0 8px var(--mini-accent, rgba(90,148,232,0.62))); }
+        #mini .mini-ring-copy { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 5px; text-shadow: 0 2px 9px rgba(0,0,0,0.88); }
+        #mini .mini-pct { font-size: 38px; font-weight: 850; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -1.2px; }
+        #mini .mini-ring-label { font-size: 10px; font-weight: 750; letter-spacing: 1px; opacity: 0.74; }
+        #mini .mini-metrics { width: 100%; margin-top: 29px; display: flex; flex-direction: column; align-items: center; }
+        #mini .mini-metric { display: flex; flex-direction: column; align-items: center; gap: 8px; text-shadow: 0 2px 8px rgba(0,0,0,0.86); }
+        #mini .mini-metric-label { font-size: 11px; font-weight: 700; letter-spacing: 1.15px; color: rgba(255,255,255,0.70); }
+        #mini .mini-metric-value { font-size: 27px; line-height: 1; font-weight: 820; font-variant-numeric: tabular-nums; letter-spacing: -0.4px; }
+        #mini .mini-divider { width: 48px; height: 1px; margin: 30px 0 27px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.48), transparent); }
+        #mini .mini-mode-dots { margin-top: auto; display: flex; gap: 7px; opacity: 0.58; }
+        #mini .mini-mode-dots span { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.34); }
+        #mini .mini-mode-dots span:first-child { width: 12px; border-radius: 999px; background: rgba(255,255,255,0.76); }
 
         #quota-app-container {
             position: relative; width: 680px; height: 380px; border-radius: 24px; overflow: hidden;
@@ -258,22 +287,36 @@
     <div class="rz rz-se" data-edge="se" onmousedown="startResize(event,'se')"></div>
     <div class="rz rz-sw" data-edge="sw" onmousedown="startResize(event,'sw')"></div>
 
-    <!-- ==== MINI CARD (vertical, ~1/8 area) — shown in 'mini' view ==== -->
+    <!-- ==== PORTRAIT MINI CARD — shown in 'mini' view ==== -->
     <div id="mini" onmousedown="compactDown(event)">
-        <div class="mini-title" data-i18n="title">Codex 额度</div>
+        <div class="mini-top">
+            <span class="mini-brand">Codex</span>
+            <span id="mini-live-dot"></span>
+        </div>
         <div class="mini-ring">
-            <svg viewBox="0 0 96 96">
-                <circle cx="48" cy="48" r="40" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="7"></circle>
-                <circle id="mini-ring-fg" cx="48" cy="48" r="40" fill="none" stroke="#5A94E8" stroke-width="7"
-                        stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="0"
-                        transform="rotate(-90 48 48)"></circle>
+            <svg viewBox="0 0 166 166">
+                <circle cx="83" cy="83" r="64" fill="none" stroke="rgba(255,255,255,0.11)" stroke-width="10"></circle>
+                <circle id="mini-ring-fg" cx="83" cy="83" r="64" fill="none" stroke="#5A94E8" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="402.1" stroke-dashoffset="0"
+                        transform="rotate(-90 83 83)"></circle>
             </svg>
-            <div class="mini-pct" id="mini-pct">--</div>
+            <div class="mini-ring-copy">
+                <div class="mini-pct" id="mini-pct">--</div>
+                <div class="mini-ring-label" data-i18n="ring_weekly">周额度</div>
+            </div>
         </div>
-        <div class="mini-rows">
-            <div class="mini-row"><span data-i18n="m_today_used">本日已用</span><b id="mini-used">--</b></div>
-            <div class="mini-row"><span data-i18n="m_plan">套餐</span><b id="mini-plan">--</b></div>
+        <div class="mini-metrics">
+            <div class="mini-metric">
+                <span class="mini-metric-label" data-i18n="m_today_used">本日已用</span>
+                <strong class="mini-metric-value" id="mini-used">--</strong>
+            </div>
+            <div class="mini-divider"></div>
+            <div class="mini-metric">
+                <span class="mini-metric-label" data-i18n="m_calls">今日调用</span>
+                <strong class="mini-metric-value" id="mini-calls">--</strong>
+            </div>
         </div>
+        <div class="mini-mode-dots" aria-hidden="true"><span></span><span></span><span></span></div>
     </div>
 
     <!-- ==== CRYSTAL BALL — shown in 'orb' view ==== -->
@@ -324,7 +367,7 @@
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
                             <span id="update-dot"></span><span id="update-progress"></span>
                         </button>
-                        <button id="btn-min" class="win-btn" onclick="shellMinimize(event)" title="最小化为悬浮球 / Minimize to orb" aria-label="Minimize to orb">
+                        <button id="btn-min" class="win-btn" onclick="shellMinimize(event)" title="切换到竖版小窗 / Switch to portrait view" aria-label="Switch to portrait view">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
                         <button id="btn-pin" class="win-btn" onclick="shellTogglePin(event)" title="固定在最前 / 取消固定" aria-label="Toggle always on top">
@@ -440,6 +483,17 @@
         let width = 680, height = 380;
         canvas.width = width; canvas.height = height;
         appContainer.dataset.theme = themes[currentIdx].id;
+
+        function syncWeatherViewport(mode) {
+            const target = mode === 'mini' ? { width: 240, height: 520 }
+                : (mode === 'card' ? { width: 680, height: 380 } : null);
+            if (!target || (width === target.width && height === target.height)) return;
+            width = target.width;
+            height = target.height;
+            canvas.width = width;
+            canvas.height = height;
+            resetParticles();
+        }
 
         const backgroundLoads = new Map();
         function loadBackground(src) {
@@ -631,7 +685,9 @@
         function setConnState(ok) {
             const dot = document.getElementById('live-dot');
             const txt = document.getElementById('live-text');
+            const miniDot = document.getElementById('mini-live-dot');
             if (!dot) return;
+            if (miniDot) miniDot.classList.toggle('offline', !ok);
             if (ok) {
                 dot.style.background = '#4ADE80'; dot.style.boxShadow = '0 0 12px #4ADE80';
                 dot.style.animation = 'pulse 2s infinite'; txt.innerText = t('live');
@@ -739,7 +795,8 @@
 
         // Compact views (crystal-ball orb + vertical mini card). Both show the
         // account-weekly remaining %. The orb's liquid level = remaining %, tinted
-        // green(high)/amber(mid)/red(low); the mini card shows a ring + two rows.
+        // green(high)/amber(mid)/red(low); the portrait card mirrors the weekly
+        // ring plus the two vertically stacked metrics from the reference layout.
         function liquidColor(pct) {
             if (pct <= 15) return '#f87171';   // low → red
             if (pct <= 40) return '#fbbf24';   // mid → amber
@@ -765,18 +822,17 @@
             if (mp) mp.innerText = pct + '%';
             const mr = document.getElementById('mini-ring-fg');
             if (mr) {
-                const circ = 251.3; // 2*pi*40
+                const circ = 402.1; // 2*pi*64
                 mr.style.transition = 'stroke-dashoffset 1s cubic-bezier(0.16,1,0.3,1), stroke 0.8s ease';
                 mr.style.strokeDashoffset = circ * (1 - pct / 100);
-                mr.setAttribute('stroke', pct <= 10 ? '#F87171' : themes[currentIdx].color);
+                const miniAccent = pct <= 10 ? '#F87171' : themes[currentIdx].color;
+                mr.setAttribute('stroke', miniAccent);
+                mr.style.setProperty('--mini-accent', miniAccent + '99');
             }
             const mu = document.getElementById('mini-used');
             if (mu) mu.innerText = fmtCompact(d.daily ? d.daily.used : 0);
-            const mpl = document.getElementById('mini-plan');
-            if (mpl) {
-                const planKey = 'plan_' + ((d.plan && d.plan.planType) || 'unknown');
-                mpl.innerText = t(I18N[LANG][planKey] ? planKey : 'plan_unknown');
-            }
+            const mc = document.getElementById('mini-calls');
+            if (mc) mc.innerText = fmtInt(d.callsToday);
         }
 
         // ---- Electron shell integration -----------------------------------
@@ -816,6 +872,7 @@
             const mode = (v === 'orb' || v === 'mini') ? v : 'card';
             document.body.classList.remove('view-card', 'view-mini', 'view-orb');
             document.body.classList.add('view-' + mode);
+            syncWeatherViewport(mode);
             if (lastData) { updateOrb(lastData); }
         }
         if (SHELL && SHELL.onView) SHELL.onView(setView);
@@ -1102,6 +1159,7 @@
             bgIndices[targetThemeIdx] = normalizedBgIdx;
             appContainer.dataset.theme = th.id;
             resetParticles();
+            if (lastData) updateOrb(lastData);
             nameEl.innerText = th.name;
             nameEl.className = 'name-in';
             document.getElementById('progress-ring').style.stroke = th.color;
