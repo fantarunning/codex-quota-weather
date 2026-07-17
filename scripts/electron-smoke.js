@@ -15,8 +15,8 @@ async function main() {
   });
 
   const win = new BrowserWindow({
-    width: 724,
-    height: 424,
+    width: 680,
+    height: 380,
     show: false,
     frame: false,
     transparent: true,
@@ -63,7 +63,7 @@ async function main() {
       win.webContents.invalidate();
       await wait(250);
     }
-    assert(size.width >= 724 && size.height >= 424, "captured renderer size is incomplete");
+    assert(size.width >= 680 && size.height >= 380, "captured renderer size is incomplete");
     assert(colorCount > 8, "captured renderer image is blank or uniform");
     console.log(
       `Electron smoke test passed on ${process.platform}/${process.arch}: renderer and canvas are active.`

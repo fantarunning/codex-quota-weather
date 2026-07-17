@@ -18,8 +18,8 @@ app.on("window-all-closed", () => {});
 
 async function createThemeWindow(theme) {
   const win = new BrowserWindow({
-    width: 724,
-    height: 424,
+    width: 680,
+    height: 380,
     useContentSize: true,
     show: false,
     frame: false,

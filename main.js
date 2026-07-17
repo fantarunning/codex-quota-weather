@@ -25,7 +25,10 @@ const SMOKE_MODE = process.env.QUOTA_WEATHER_SMOKE === '1';
 
 const CARD_W = 680;
 const CARD_H = 380;
-const PAD = 22; // transparent margin around the card (hides square window edge)
+// Keep the BrowserWindow flush with the card. The page clips its rounded
+// corners, while the transparent BrowserWindow lets those corner pixels show
+// the desktop instead of leaving a dark-looking outer gutter.
+const PAD = 0;
 const OUTER_W = CARD_W + PAD * 2;
 const OUTER_H = CARD_H + PAD * 2;
 

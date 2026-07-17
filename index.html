@@ -4,22 +4,19 @@
     <meta charset="UTF-8">
     <title>Codex Quota Panel</title>
     <style>
-        /* The body is the transparent margin around the card. Its padding = PAD
-           in electron/main.js (22px @ scale 1), so any window-edge / DWM artifact
-           lands in this transparent zone and the rounded card shows no square
-           border. The body is also the drag handle (-webkit-app-region: drag). */
+        /* The body stays fully transparent and the card sits flush with the
+           BrowserWindow. Rounded corner pixels therefore reveal the desktop
+           instead of reading as a dark outer border. */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent; }
         body {
-            box-sizing: border-box; padding: 22px; display: flex; align-items: center; justify-content: center;
+            box-sizing: border-box; display: flex; align-items: center; justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             -webkit-app-region: drag;   /* whole window is draggable by default... */
         }
 
-        /* Invisible resize grips sitting in the transparent PAD zone at the real
-           window edges. Frameless+transparent windows have no native resize
-           border on Windows, so we implement it: each grip is no-drag (so the
-           body drag doesn't swallow it), shows the right resize cursor, and on
-           mousedown tells main to follow the OS cursor (aspect-locked). */
+        /* Invisible resize grips sit at the real window edges. Frameless,
+           transparent windows have no native resize border on Windows, so each
+           grip forwards the cursor movement to the main process. */
         .rz { position: fixed; z-index: 9999; -webkit-app-region: no-drag; }
         .rz-n  { top: 0; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
         .rz-s  { bottom: 0; left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
@@ -50,7 +47,7 @@
 
         #quota-app-container {
             position: relative; width: 680px; height: 380px; border-radius: 24px; overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.3);
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.22);
             color: #fff; background: #000;
             /* NOTE: no CSS transform here — a transform on any ancestor silently
                disables -webkit-app-region drag in Electron. Intro uses opacity only. */
@@ -153,8 +150,7 @@
     </style>
 </head>
 <body>
-    <!-- invisible resize grips at the true window edges (in the transparent PAD
-         zone). Each sets the cursor and starts an aspect-locked resize. -->
+    <!-- invisible resize grips at the true window edges -->
     <div class="rz rz-n"  data-edge="n"  onmousedown="startResize(event,'n')"></div>
     <div class="rz rz-s"  data-edge="s"  onmousedown="startResize(event,'s')"></div>
     <div class="rz rz-e"  data-edge="e"  onmousedown="startResize(event,'e')"></div>
