@@ -129,10 +129,17 @@ function createWindow() {
       win.webContents.executeJavaScript(`({
         theme: document.getElementById('quota-app-container').dataset.theme,
         title: document.querySelector('.header-title').textContent
-      })`).then((state) => {
+      })`).then(async (state) => {
         if (!state || state.theme !== (cfg.defaultTheme || 'rain') || !state.title) {
           throw new Error('renderer state is incomplete');
         }
+        const expectedScale = scale;
+        minimizeToOrb();
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        if (Math.abs(Number(loadConfig().scale) - expectedScale) > 0.001) {
+          throw new Error('minimizing to the orb overwrote the saved card scale');
+        }
+        restoreFromOrb();
         console.log(`[quota-weather] full app smoke passed on ${process.platform}/${process.arch}`);
         setTimeout(quitAll, 100);
       }).catch((error) => {
@@ -144,7 +151,9 @@ function createWindow() {
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
   win.on('resize', () => {
-    if (!win) return;
+    // The compact orb is a temporary window shape, not a card resize. Persisting
+    // its 76 px width would clamp and overwrite the user's card scale with 0.5.
+    if (!win || minimized) return;
     const [cw] = win.getContentSize();
     scale = clampScale(cw / OUTER_W);
     win.webContents.setZoomFactor(scale);
