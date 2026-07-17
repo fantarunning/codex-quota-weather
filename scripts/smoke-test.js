@@ -97,7 +97,7 @@ async function main() {
   const macInstaller = fs.readFileSync(path.join(ROOT, "install-macos.sh"), "utf8");
   assert(!macInstaller.includes("$($NODE "), "macOS installer invokes the private Node path without quotes");
   const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
-  assert(ciWorkflow.includes("Codex Quota Weather CI"), "macOS CI install path must exercise spaces");
+  assert(ciWorkflow.includes("Directory With Spaces/CodexQuotaWeather-CI"), "macOS CI install path must exercise spaces");
 
   const fixtureRoot = path.join(ROOT, ".tmp", "cross-midnight-sessions");
   fs.rmSync(fixtureRoot, { recursive: true, force: true });

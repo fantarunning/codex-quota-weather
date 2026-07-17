@@ -62,7 +62,7 @@ jobs:
         shell: bash
         env:
           CODEX_QUOTA_WEATHER_SOURCE_DIR: ${{ github.workspace }}
-          CODEX_QUOTA_WEATHER_INSTALL_DIR: ${{ runner.temp }}/Codex Quota Weather CI
+          CODEX_QUOTA_WEATHER_INSTALL_DIR: ${{ runner.temp }}/Directory With Spaces/CodexQuotaWeather-CI
           CODEX_QUOTA_WEATHER_NO_STARTUP: "1"
           CODEX_QUOTA_WEATHER_NO_LAUNCH: "1"
         run: |
