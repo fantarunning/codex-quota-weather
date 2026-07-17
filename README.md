@@ -40,7 +40,8 @@ curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cm
 
 这条命令先下载只有一行的 [install.cmd](install.cmd)，再调用完整的
 [install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗。
-从 `v2.3.0` 开始只需安装一次，后续版本可直接在悬浮窗中下载；旧版用户再运行一次该命令即可完成目录迁移。
+安装 `v2.3.2` 后只需安装一次，后续版本可直接在悬浮窗中下载；更早版本用户再运行一次该命令即可完成目录迁移。
+已经安装 `v2.3.0` 或 `v2.3.1` 的用户需要再运行一次安装命令，以修复 Windows 临时 ZIP 解压问题；此后可直接使用面板更新。
 
 也可以在 PowerShell 中运行：
 
@@ -318,8 +319,8 @@ Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
 发布新版本时，先同步 `package.json` 与 `package-lock.json` 的版本号，再推送同名 Tag：
 
 ```powershell
-git tag -a v2.3.1 -m "Release v2.3.1"
-git push origin v2.3.1
+git tag -a v2.3.2 -m "Release v2.3.2"
+git push origin v2.3.2
 ```
 
 `.github/workflows/release.yml` 会完成跨平台打包、校验清单生成和 GitHub Release 发布。

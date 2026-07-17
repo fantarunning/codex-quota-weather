@@ -47,6 +47,12 @@ function artifactName(version, platform = process.platform, arch = process.arch)
   return `codex-quota-weather-v${cleanVersion(version)}-${platformKey(platform, arch)}.zip`;
 }
 
+// Windows Expand-Archive validates the file extension before reading the ZIP.
+// Keep the in-progress marker while still ending the staging path in `.zip`.
+function partialArtifactName(assetName) {
+  return `${assetName}.partial.zip`;
+}
+
 function readJson(filePath, fallback = null) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -495,7 +501,7 @@ class UpdateManager extends EventEmitter {
       const release = this.releases.find((entry) => entry.version === version);
       if (!release || !release.asset) throw new Error(`No ${platformKey()} package is attached to v${version}`);
       fs.mkdirSync(this.downloadsDir(), { recursive: true });
-      partial = path.join(this.downloadsDir(), `${release.asset.name}.partial`);
+      partial = path.join(this.downloadsDir(), partialArtifactName(release.asset.name));
       this.emitStatus({ phase: "downloading", targetVersion: version, progress: 0, message: `Downloading v${version}` });
       await downloadFile(release.asset.browser_download_url, partial, (progress, received, total) => {
         this.emitStatus({ phase: "downloading", progress, bytesReceived: received, bytesTotal: total });
@@ -557,5 +563,6 @@ module.exports = {
   cleanVersion,
   compareVersions,
   markBootSuccessful,
+  partialArtifactName,
   platformKey,
 };

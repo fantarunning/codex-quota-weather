@@ -9,6 +9,7 @@ const {
   artifactName,
   compareVersions,
   markBootSuccessful,
+  partialArtifactName,
   platformKey,
 } = require("../update-manager.js");
 
@@ -18,6 +19,10 @@ assert(compareVersions("2.2.5", "2.3.0") < 0);
 assert.strictEqual(platformKey("win32", "x64"), "win32-x64");
 assert.strictEqual(platformKey("darwin", "arm64"), "darwin-arm64");
 assert.strictEqual(artifactName("2.3.0", "win32", "x64"), "codex-quota-weather-v2.3.0-win32-x64.zip");
+assert.strictEqual(
+  partialArtifactName("codex-quota-weather-v2.3.2-win32-x64.zip"),
+  "codex-quota-weather-v2.3.2-win32-x64.zip.partial.zip"
+);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "quota-weather-update-test-"));
 const token = "0123456789abcdef0123456789abcdef";
