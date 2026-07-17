@@ -38,6 +38,18 @@ function Stop-InstalledApp([string]$RootDir) {
     }
 }
 
+function Wait-ForLocalPanel([int]$Port, [int]$TimeoutSeconds = 30) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    try {
+      $health = Invoke-RestMethod -UseBasicParsing -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2
+      if ($health.ok) { return $health }
+    } catch { }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+  return $null
+}
+
 function Get-SourceDirectory {
   if ($SourceDir) {
     $resolved = Resolve-FullPath $SourceDir
@@ -236,8 +248,30 @@ try {
 
   if (-not $NoLaunch) {
     Write-Step "Starting Codex Quota Weather through the stable launcher"
-    Start-Process -FilePath (Join-Path $env:WINDIR "System32\wscript.exe") `
-      -ArgumentList ('"' + (Join-Path $launcherDir "start-hidden.vbs") + '"') `
+    $wscript = Join-Path $env:WINDIR "System32\wscript.exe"
+    $launcherVbs = Join-Path $launcherDir "start-hidden.vbs"
+    Start-Process -FilePath $wscript `
+      -ArgumentList ('"' + $launcherVbs + '"') `
+      -WorkingDirectory $installRoot -WindowStyle Hidden
+
+    $healthPort = 8787
+    if (Test-Path -LiteralPath $userConfig) {
+      try {
+        $configuredPort = [int](Get-Content -LiteralPath $userConfig -Raw | ConvertFrom-Json).port
+        if ($configuredPort -gt 0 -and $configuredPort -le 65535) { $healthPort = $configuredPort }
+      } catch { }
+    }
+    Write-Step "Waiting for the local panel to become ready"
+    $health = Wait-ForLocalPanel -Port $healthPort
+    if (-not $health) {
+      $launcherLog = Join-Path $installRoot "logs\launcher.log"
+      throw "The panel did not start within 30 seconds. Launcher log: $launcherLog"
+    }
+
+    # A second launch reaches Electron's single-instance handler and explicitly
+    # shows the already healthy panel, independent of process-name detection.
+    Start-Process -FilePath $wscript `
+      -ArgumentList ('"' + $launcherVbs + '"') `
       -WorkingDirectory $installRoot -WindowStyle Hidden
   }
 

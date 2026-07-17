@@ -33,16 +33,16 @@ Run in Command Prompt (recommended and shorter; Windows 10/11 includes `curl.exe
 curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
 ```
 
-This downloads the one-line [install.cmd](install.cmd) entry point, which calls the
+This downloads the lightweight [install.cmd](install.cmd) entry point, which calls the
 full [install.ps1](install.ps1) installer. It does not permanently change the
-PowerShell execution policy. Starting with `v2.3.0`, this is a one-time install;
+PowerShell execution policy. A first install normally takes 1–3 minutes; keep the CMD window open. The installer reports progress, waits for a successful local health check, and explicitly opens the panel. Starting with `v2.3.0`, this is a one-time install;
 later releases can be downloaded from the panel or tray. Existing users should run
 the command once more to migrate from the old single-version layout.
 
 Or run in PowerShell:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/fantarunning/codex-quota-weather/raw/main/install.ps1 | iex"
 ```
 
 ### macOS 13.5+ (Apple Silicon / Intel)
@@ -200,6 +200,10 @@ project, or printed in logs. Codex authentication and session files are read-onl
 See [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
+
+### The CMD installer appears to do nothing
+
+The first install downloads roughly 150 MB of Electron and normally takes 1–3 minutes. Keep the window open until it says `Installation finished successfully`. The current installer prints an immediate start message, verifies the local health endpoint before reporting success, and explicitly opens the panel. On failure, preserve the terminal output and inspect `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`. The default health check is `curl http://127.0.0.1:8787/health`.
 
 ### Weekly quota is offline or stale
 

@@ -96,6 +96,10 @@ async function main() {
   assert(!mainSource.includes("版本与更新 / Version & updates"), "tray still contains the version/update menu");
   const macInstaller = fs.readFileSync(path.join(ROOT, "install-macos.sh"), "utf8");
   assert(!macInstaller.includes("$($NODE "), "macOS installer invokes the private Node path without quotes");
+  const windowsEntry = fs.readFileSync(path.join(ROOT, "install.cmd"), "utf8");
+  assert(windowsEntry.includes("Starting installer"), "Windows CMD installer has no immediate progress message");
+  const windowsInstaller = fs.readFileSync(path.join(ROOT, "install.ps1"), "utf8");
+  assert(windowsInstaller.includes("Wait-ForLocalPanel"), "Windows installer does not verify panel startup");
   const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
   assert(ciWorkflow.includes("Directory With Spaces/CodexQuotaWeather-CI"), "macOS CI install path must exercise spaces");
 

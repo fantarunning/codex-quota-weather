@@ -38,15 +38,15 @@
 curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
 ```
 
-这条命令先下载只有一行的 [install.cmd](install.cmd)，再调用完整的
-[install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗。
+这条命令先下载轻量的 [install.cmd](install.cmd)，再调用完整的
+[install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。首次安装通常需要 1–3 分钟，请保持 CMD 窗口打开；安装器会显示进度、等待本地健康检查，并在成功后主动打开悬浮窗。
 安装 `v2.3.2` 或更高版本后只需安装一次，后续版本可直接在悬浮窗中下载；更早版本用户再运行一次该命令即可完成目录迁移。
 已经安装 `v2.3.0` 或 `v2.3.1` 的用户需要再运行一次安装命令，以修复 Windows 临时 ZIP 解压问题；此后可直接使用面板更新。
 
 也可以在 PowerShell 中运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/fantarunning/codex-quota-weather/raw/main/install.ps1 | iex"
 ```
 
 ### macOS 13.5+（Apple Silicon / Intel）
@@ -232,6 +232,13 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 详细边界见 [SECURITY.md](SECURITY.md)。
 
 ## 故障排查
+
+### CMD 执行安装命令后看起来没有反应
+
+- 首次安装需要下载约 150 MB 的 Electron，通常耗时 1–3 分钟；请等待出现“Installation finished successfully”，不要提前关闭窗口。
+- 新版安装器会立即显示开始提示，并在结束前确认本地面板已经启动。
+- 如果明确显示失败，请保留窗口中的错误信息，并查看 `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`。
+- 默认端口可用 `curl http://127.0.0.1:8787/health` 检查；返回 `{"ok":true,...}` 表示后台已正常运行。
 
 ### 周额度显示离线或长时间不更新
 
