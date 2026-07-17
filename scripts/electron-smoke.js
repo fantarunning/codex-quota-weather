@@ -54,12 +54,25 @@ async function main() {
       return {
         message: document.getElementById('update-message').textContent,
         action: document.getElementById('update-primary').textContent,
+        updateVisible: document.getElementById('btn-update').classList.contains('visible'),
+        skipVisible: document.getElementById('update-skip').classList.contains('visible'),
         historyRows: document.querySelectorAll('.update-version').length
       };
     })()`);
     assert(updateUi.message.includes('2.3.1'), "update popover did not render the target version");
     assert(updateUi.action.includes('2.3.1'), "update action did not render the target version");
+    assert.strictEqual(updateUi.updateVisible, true, "update button is hidden despite an available update");
+    assert.strictEqual(updateUi.skipVisible, true, "skip action is hidden despite an available update");
     assert(updateUi.historyRows >= 2, "update history did not render local and remote versions");
+    const skippedUi = await win.webContents.executeJavaScript(`(() => {
+      renderUpdateState({ managed: true, phase: 'skipped', currentVersion: '2.3.0', latestVersion: '2.3.1', skippedVersion: '2.3.1' });
+      return {
+        updateVisible: document.getElementById('btn-update').classList.contains('visible'),
+        popoverOpen: document.getElementById('update-popover').classList.contains('open')
+      };
+    })()`);
+    assert.strictEqual(skippedUi.updateVisible, false, "skipped update button is still visible");
+    assert.strictEqual(skippedUi.popoverOpen, false, "skipped update popover is still open");
     // Chromium can throttle a never-shown transparent window on some hosts.
     // Show it outside the visible desktop so a real compositor frame is produced.
     win.setPosition(-10000, -10000);

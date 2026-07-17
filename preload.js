@@ -30,5 +30,6 @@ contextBridge.exposeInMainWorld('quotaShell', {
   downloadUpdate: (version) => ipcRenderer.invoke('quota:download-update', version),
   restartUpdate: () => ipcRenderer.invoke('quota:restart-update'),
   switchVersion: (version) => ipcRenderer.invoke('quota:switch-version', version),
+  skipUpdate: (version) => ipcRenderer.invoke('quota:skip-update', version),
   onUpdateStatus: (cb) => ipcRenderer.on('quota:update-status', (_e, value) => cb(value)),
 });

@@ -26,6 +26,7 @@ const BUILTIN_DEFAULTS = {
   watchProcesses: ["Codex", "ChatGPT"],
   watchIntervalMs: 5000,
   weatherSwitchIntervalMs: 600000,
+  skippedUpdateVersion: null,
 };
 
 function readJson(filePath) {

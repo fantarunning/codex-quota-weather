@@ -194,7 +194,8 @@
         .win-btn:active { transform: translateY(0); }
         #btn-close:hover { background: rgba(248,113,113,0.85); border-color: rgba(248,113,113,0.9); }
         #btn-pin.pinned { background: rgba(90,148,232,0.85); border-color: rgba(90,148,232,0.9); }
-        #btn-update { position: relative; }
+        #btn-update { display: none; position: relative; }
+        #btn-update.visible { display: flex; }
         #btn-update.has-update { background: rgba(74,222,128,0.2); border-color: rgba(74,222,128,0.72); }
         #btn-update.update-ready { background: rgba(90,148,232,0.86); border-color: rgba(147,197,253,0.95); }
         #update-dot {
@@ -230,6 +231,13 @@
         }
         #update-primary:hover { filter: brightness(1.1); }
         #update-primary:disabled { opacity: 0.5; cursor: default; }
+        #update-skip {
+            display: none; width: 100%; margin-top: 6px; padding: 7px 10px; border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.16); background: transparent; color: rgba(255,255,255,0.76);
+            font-size: 10px; font-weight: 700; cursor: pointer;
+        }
+        #update-skip.visible { display: block; }
+        #update-skip:hover { background: rgba(255,255,255,0.1); color: #fff; }
         #update-history { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); max-height: 104px; overflow: auto; }
         .update-version { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 3px; font-size: 10px; }
         .update-version button { border: 0; padding: 3px 6px; border-radius: 6px; background: rgba(255,255,255,0.12); color: #fff; font-size: 9px; cursor: pointer; }
@@ -337,6 +345,7 @@
                 <div id="update-message">正在读取版本信息…</div>
                 <div id="update-bar"><div id="update-bar-fill"></div></div>
                 <button id="update-primary" onclick="runUpdateAction(event)">检查更新</button>
+                <button id="update-skip" onclick="skipCurrentUpdate(event)">跳过此次更新</button>
                 <div id="update-history"></div>
             </div>
 
@@ -473,6 +482,7 @@
                 update_up_to_date: '当前已经是最新版本。', update_available: '发现新版本',
                 update_downloading: '正在下载', update_verifying: '正在校验 SHA-256…',
                 update_installing: '正在解压并执行冒烟测试…', update_ready: '已准备完成，重启后切换版本。',
+                update_skipped: '已跳过此版本；新版本发布前不再提醒。', update_skip: '跳过此次更新',
                 update_history: '历史版本', update_current_badge: '当前', update_rollback: '回退', update_get: '下载', update_switch_confirm: '确定要切换到这个版本吗？'
             },
             en: {
@@ -490,6 +500,7 @@
                 update_up_to_date: 'You already have the latest version.', update_available: 'New version available',
                 update_downloading: 'Downloading', update_verifying: 'Verifying SHA-256…',
                 update_installing: 'Extracting and running the smoke test…', update_ready: 'Ready. Restart to switch versions.',
+                update_skipped: 'This version was skipped. You will be notified when a newer version is released.', update_skip: 'Skip this update',
                 update_history: 'Version history', update_current_badge: 'current', update_rollback: 'rollback', update_get: 'download', update_switch_confirm: 'Switch to this version?'
             }
         };
@@ -826,6 +837,7 @@
             if (state.phase === 'installing') return t('update_installing');
             if (state.phase === 'ready' || state.phase === 'restarting') return t('update_ready');
             if (state.phase === 'up-to-date') return t('update_up_to_date');
+            if (state.phase === 'skipped') return t('update_skipped');
             if (state.phase === 'error') return state.message || t('update_retry');
             if (state.phase === 'checking') return LANG === 'zh' ? '正在检查 GitHub Release…' : 'Checking GitHub Releases…';
             return state.message || t('update_reading');
@@ -895,12 +907,20 @@
             const current = document.getElementById('update-current');
             const message = document.getElementById('update-message');
             const primary = document.getElementById('update-primary');
+            const skip = document.getElementById('update-skip');
+            const popover = document.getElementById('update-popover');
             const bar = document.getElementById('update-bar');
             const fill = document.getElementById('update-bar-fill');
-            if (!button || !current || !message || !primary || !bar || !fill) return;
+            if (!button || !current || !message || !primary || !skip || !bar || !fill || !popover) return;
             const phase = state ? state.phase : 'idle';
-            const busy = ['checking', 'downloading', 'verifying', 'installing', 'restarting'].includes(phase);
+            const busy = ['downloading', 'verifying', 'installing', 'restarting'].includes(phase);
             const hasUpdate = phase === 'available' || phase === 'ready';
+            const updatePhases = ['available', 'downloading', 'verifying', 'installing', 'ready', 'restarting'];
+            const shouldShow = !!(state && state.managed && (
+                updatePhases.includes(phase) || (phase === 'error' && state.targetVersion)
+            ));
+            button.classList.toggle('visible', shouldShow);
+            if (!shouldShow) popover.classList.remove('open');
             button.classList.toggle('has-update', hasUpdate);
             button.classList.toggle('update-ready', phase === 'ready');
             button.classList.toggle('is-busy', busy);
@@ -910,6 +930,8 @@
             bar.classList.toggle('show', showBar);
             fill.style.width = (phase === 'downloading' ? ((state && state.progress) || 0) : (showBar ? 100 : 0)) + '%';
             primary.disabled = busy || !state || !state.managed;
+            skip.classList.toggle('visible', phase === 'available' && !!(state && state.targetVersion));
+            skip.textContent = t('update_skip');
             if (phase === 'available') primary.textContent = t('update_download') + ' v' + state.targetVersion;
             else if (phase === 'ready') primary.textContent = t('update_restart') + ' v' + state.targetVersion;
             else if (phase === 'error') primary.textContent = t('update_retry');
@@ -920,10 +942,24 @@
         function toggleUpdatePopover(e) {
             if (e) e.stopPropagation();
             const popover = document.getElementById('update-popover');
-            if (!popover) return;
+            const button = document.getElementById('btn-update');
+            if (!popover || !button || !button.classList.contains('visible')) return;
             popover.classList.toggle('open');
             if (popover.classList.contains('open') && SHELL && SHELL.getUpdateStatus) {
                 SHELL.getUpdateStatus().then(renderUpdateState).catch(() => {});
+            }
+        }
+
+        async function skipCurrentUpdate(e) {
+            if (e) e.stopPropagation();
+            if (!SHELL || !SHELL.skipUpdate || !currentUpdateState) return;
+            const version = currentUpdateState.targetVersion || currentUpdateState.latestVersion;
+            if (!version) return;
+            try {
+                const next = await SHELL.skipUpdate(version);
+                if (next) renderUpdateState(next);
+            } catch (error) {
+                renderUpdateState({ ...currentUpdateState, phase: 'error', message: error.message });
             }
         }
 

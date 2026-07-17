@@ -203,12 +203,13 @@ function locateAppRoot(extractDir) {
 }
 
 class UpdateManager extends EventEmitter {
-  constructor({ appDir, currentVersion, onRestart } = {}) {
+  constructor({ appDir, currentVersion, onRestart, skippedVersion } = {}) {
     super();
     this.appDir = path.resolve(appDir || __dirname);
     this.currentVersion = cleanVersion(currentVersion || readJson(path.join(this.appDir, "package.json"), {}).version);
     this.root = installedRoot(this.appDir);
     this.onRestart = typeof onRestart === "function" ? onRestart : () => {};
+    this.skippedVersion = validVersion(skippedVersion) ? cleanVersion(skippedVersion) : null;
     this.releases = [];
     this.busy = false;
     this.status = {
@@ -217,6 +218,7 @@ class UpdateManager extends EventEmitter {
       currentVersion: this.currentVersion,
       latestVersion: null,
       targetVersion: null,
+      skippedVersion: this.skippedVersion,
       progress: 0,
       message: this.root ? null : "Run the installer once to enable in-panel updates",
       lastCheckedAt: null,
@@ -347,16 +349,33 @@ class UpdateManager extends EventEmitter {
         });
       }
       const hasUpdate = latest && latest.asset && compareVersions(latest.version, this.currentVersion) > 0;
+      const isSkipped = hasUpdate && latest.version === this.skippedVersion;
       return this.emitStatus({
-        phase: hasUpdate ? "available" : "up-to-date",
+        phase: isSkipped ? "skipped" : (hasUpdate ? "available" : "up-to-date"),
         latestVersion: latest?.version || null,
-        targetVersion: hasUpdate ? latest.version : null,
+        targetVersion: hasUpdate && !isSkipped ? latest.version : null,
+        skippedVersion: this.skippedVersion,
         lastCheckedAt: new Date().toISOString(),
-        message: hasUpdate ? `v${latest.version} is available` : "You are up to date",
+        message: isSkipped
+          ? `v${latest.version} was skipped`
+          : (hasUpdate ? `v${latest.version} is available` : "You are up to date"),
       });
     } catch (error) {
       return this.emitStatus({ phase: "error", message: error.message });
     }
+  }
+
+  skipVersion(version) {
+    version = cleanVersion(version || this.status.targetVersion || this.status.latestVersion);
+    if (!validVersion(version)) throw new Error("No update version was selected");
+    this.skippedVersion = version;
+    return this.emitStatus({
+      phase: "skipped",
+      skippedVersion: version,
+      targetVersion: null,
+      progress: 0,
+      message: `v${version} was skipped`,
+    });
   }
 
   async expectedDigest(release) {

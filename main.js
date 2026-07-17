@@ -12,7 +12,7 @@
 // The panel window itself uses skipTaskbar so it never shows a taskbar button;
 // the tray icon is the only persistent UI affordance.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -423,101 +423,6 @@ function buildTray() {
   updateTrayMenu();
 }
 
-function updateMenuTemplate() {
-  if (!updateManager) {
-    return [{ label: '版本信息加载中 / Loading version', enabled: false }];
-  }
-  const status = updateManager.getStatus();
-  const items = [
-    { label: `当前版本 v${status.currentVersion}`, enabled: false },
-  ];
-  if (!status.managed) {
-    items.push(
-      { label: '重新运行安装命令以启用面板更新', enabled: false },
-      { label: '检查 GitHub 版本 / Check releases', click: () => updateManager.checkForUpdates() }
-    );
-    return items;
-  }
-
-  if (status.phase === 'checking') {
-    items.push({ label: '正在检查更新… / Checking…', enabled: false });
-  } else if (status.phase === 'downloading') {
-    items.push({ label: `正在下载 ${status.progress || 0}%`, enabled: false });
-  } else if (status.phase === 'verifying' || status.phase === 'installing') {
-    items.push({ label: '正在校验并安装… / Verifying…', enabled: false });
-  } else if (status.phase === 'ready') {
-    items.push({
-      label: `重启并切换到 v${status.targetVersion}`,
-      click: () => updateManager.restartToApply().catch(showUpdateError),
-    });
-  } else if (status.phase === 'available') {
-    items.push({
-      label: `下载 v${status.targetVersion}`,
-      click: () => updateManager.downloadLatest().catch(showUpdateError),
-    });
-  } else {
-    items.push({ label: '检查更新 / Check for updates', click: () => updateManager.checkForUpdates() });
-  }
-
-  if (status.phase === 'error' && status.message) {
-    items.push({ label: `更新失败：${status.message}`, enabled: false });
-  } else if (status.phase === 'up-to-date') {
-    items.push({ label: '已是最新版本 / Up to date', enabled: false });
-  }
-
-  const history = [];
-  for (const entry of status.installed || []) {
-    if (entry.current) {
-      history.push({ label: `✓ v${entry.version}（当前）`, enabled: false });
-    } else if (!entry.switchable) {
-      history.push({ label: `v${entry.version}（旧版应急备份）`, enabled: false });
-    } else {
-      history.push({
-        label: `v${entry.version}${entry.previous ? '（上一版）' : ''} — 回退`,
-        click: () => confirmVersionSwitch(entry.version, true),
-      });
-    }
-  }
-  for (const release of (status.releases || []).filter((entry) => !entry.installed).slice(0, 6)) {
-    history.push({
-      label: release.downloadable ? `v${release.version} — 下载并切换` : `v${release.version} — 无此平台安装包`,
-      enabled: release.downloadable,
-      click: () => confirmVersionSwitch(release.version, false),
-    });
-  }
-  if (!history.length) history.push({ label: '检查更新后显示历史版本', enabled: false });
-  items.push({ type: 'separator' }, { label: '历史版本 / Version history', submenu: history });
-  return items;
-}
-
-function showUpdateError(error) {
-  const message = error && error.message ? error.message : String(error);
-  dialog.showErrorBox('Codex Quota Weather', message);
-}
-
-async function confirmVersionSwitch(version, installed) {
-  const result = await dialog.showMessageBox({
-    type: 'question',
-    title: installed ? '回退版本' : '下载历史版本',
-    message: installed
-      ? `确定要重启并切换到 v${version} 吗？`
-      : `确定要下载 v${version}，完成后重启切换吗？`,
-    detail: '当前设置会先备份；如果目标版本启动失败，程序会自动恢复上一版。',
-    buttons: ['继续', '取消'],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  });
-  if (result.response !== 0) return;
-  try {
-    if (installed) updateManager.prepareSwitch(version);
-    else await updateManager.downloadVersion(version);
-    if (updateManager.getStatus().phase === 'ready') await updateManager.restartToApply();
-  } catch (error) {
-    showUpdateError(error);
-  }
-}
-
 function updateTrayMenu() {
   if (!tray) return;
   const visible = !!(win && win.isVisible());
@@ -546,7 +451,6 @@ function updateTrayMenu() {
         { label: '每 30 分钟 / 30 minutes', type: 'radio', checked: weatherInterval === 30 * 60 * 1000, click: () => setWeatherSwitchInterval(30 * 60 * 1000) },
       ],
     },
-    { label: '版本与更新 / Version & updates', submenu: updateMenuTemplate() },
     { type: 'separator' },
     { label: '退出 / Quit', click: () => quitAll() },
   ]);
@@ -580,6 +484,12 @@ ipcMain.handle('quota:restart-update', () => updateManager ? updateManager.resta
 ipcMain.handle('quota:switch-version', (_event, version) => (
   updateManager ? updateManager.prepareSwitch(version) : null
 ));
+ipcMain.handle('quota:skip-update', (_event, version) => {
+  if (!updateManager) return null;
+  const status = updateManager.skipVersion(version);
+  cfg = updateConfig({ skippedUpdateVersion: status.skippedVersion || null });
+  return status;
+});
 
 // orb drag: move the whole (tiny) window following the OS cursor
 let orbDragTimer = null;
@@ -690,9 +600,9 @@ if (!gotLock) {
       appDir: APP_DIR,
       currentVersion: app.getVersion(),
       onRestart: () => quitAll(),
+      skippedVersion: cfg.skippedUpdateVersion || null,
     });
     updateManager.on('status', (status) => {
-      updateTrayMenu();
       if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
         win.webContents.send('quota:update-status', status);
       }

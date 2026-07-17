@@ -36,5 +36,41 @@ fs.writeFileSync(
 const manager = new UpdateManager({ appDir, currentVersion: "2.3.0" });
 assert.strictEqual(manager.getStatus().managed, true);
 assert.strictEqual(manager.prepareSwitch("2.3.0").phase, "up-to-date");
-fs.rmSync(root, { recursive: true, force: true });
-console.log("Update manager tests passed.");
+const skipped = manager.skipVersion("2.3.1");
+assert.strictEqual(skipped.phase, "skipped");
+assert.strictEqual(skipped.skippedVersion, "2.3.1");
+assert.strictEqual(skipped.targetVersion, null);
+
+const release = (version) => ({
+  tag_name: `v${version}`,
+  name: `v${version}`,
+  draft: false,
+  prerelease: false,
+  published_at: new Date().toISOString(),
+  html_url: `https://example.test/v${version}`,
+  assets: [{ name: artifactName(version), browser_download_url: `https://example.test/v${version}.zip` }],
+});
+
+(async () => {
+  const originalFetch = global.fetch;
+  let remoteReleases = [release("2.3.1")];
+  global.fetch = async () => ({ ok: true, json: async () => remoteReleases });
+  try {
+    const restarted = new UpdateManager({ appDir, currentVersion: "2.3.0", skippedVersion: "2.3.1" });
+    let checked = await restarted.checkForUpdates();
+    assert.strictEqual(checked.phase, "skipped", "a skipped version reappeared after restart");
+    assert.strictEqual(checked.targetVersion, null);
+
+    remoteReleases = [release("2.3.2"), release("2.3.1")];
+    checked = await restarted.checkForUpdates();
+    assert.strictEqual(checked.phase, "available", "a newer release did not override the old skip");
+    assert.strictEqual(checked.targetVersion, "2.3.2");
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  console.log("Update manager tests passed.");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

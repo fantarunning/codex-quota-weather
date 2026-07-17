@@ -25,7 +25,7 @@
 - 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从 Windows 系统托盘或 macOS 菜单栏手动控制。
 - 原生支持 Windows 10/11、Apple Silicon Mac 和 Intel Mac。
 - 支持置顶、缩放、拖动、缩成悬浮球、中英文和减少动态效果。
-- 支持悬浮窗内下载更新、托盘历史版本回退和新版本启动失败自动恢复。
+- 支持悬浮窗内下载更新、历史版本回退和新版本启动失败自动恢复。
 - 所有数据只在本机处理，本地服务仅监听 `127.0.0.1`。
 
 ## 一行安装
@@ -40,7 +40,7 @@ curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cm
 
 这条命令先下载只有一行的 [install.cmd](install.cmd)，再调用完整的
 [install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗。
-从 `v2.3.0` 开始只需安装一次，后续版本可直接在悬浮窗或托盘菜单中下载；旧版用户再运行一次该命令即可完成目录迁移。
+从 `v2.3.0` 开始只需安装一次，后续版本可直接在悬浮窗中下载；旧版用户再运行一次该命令即可完成目录迁移。
 
 也可以在 PowerShell 中运行：
 
@@ -75,18 +75,19 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 
 ## 面板更新与历史版本
 
-- 点击悬浮窗顶部的下载图标，可以检查、下载并重启安装新版本。
-- 右键托盘/菜单栏图标，打开“版本与更新”，可以看到当前版本、下载进度及历史版本。
+- 更新入口只显示在悬浮窗顶部。没有新版本时下载图标完全隐藏；检测到新 GitHub Release 后才会自动出现。
+- 点击下载图标可查看版本、下载进度和历史版本，并选择“下载更新”或“跳过此次更新”。
+- 跳过后会记住该版本，即使重启也不再显示下载图标；发布更高版本后会重新提醒。
 - 新版本会先下载到独立目录，校验 GitHub Release 的 SHA-256，再执行烟雾测试；不会覆盖正在运行的版本。
 - 切换后 30 秒内未能正常启动时，固定启动器会自动恢复上一版本和切换前的配置备份。
 - 默认保留最近 5 个版本。已安装版本可以立即回退，远端历史版本可以先下载再切换。
-- 从 `v2.3.0` 起的版本可在菜单中双向切换；迁移时保留的更早版本只作为新版启动失败时的应急自动回退。
+- 从 `v2.3.0` 起的版本可在更新面板中双向切换；迁移时保留的更早版本只作为新版启动失败时的应急自动回退。
 
 ```text
 CodexQuotaWeather/
 ├─ launcher/             固定启动器和开机启动入口
 ├─ runtime/              私有 Node.js 运行时
-├─ versions/2.3.0/       各版本应用与 Electron
+├─ versions/<version>/   各版本应用与 Electron
 ├─ downloads/            临时下载
 └─ state/update-state.json
 ```
@@ -141,12 +142,12 @@ npm run setup:electron
 | 点击左侧额度圆环 | 切换到下一种天气 |
 | 点击顶部天气名称 | 更换当前天气的背景 |
 | 点击 `中 / EN` | 切换界面语言 |
-| 点击下载图标 | 检查更新、查看进度、重启安装或选择历史版本 |
+| 点击下载图标（仅有更新时显示） | 下载更新、跳过此次更新、查看进度或选择历史版本 |
 | 点击 `−` | 缩成只显示周额度的悬浮球 |
 | 点击铃铛图标 | 开关窗口置顶 |
 | 点击 `×` | 隐藏面板，程序仍留在系统托盘 |
 | 左键托盘/菜单栏图标 | 显示或隐藏面板 |
-| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气、更新/回退或退出 |
+| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气或退出 |
 | `Ctrl + 滚轮` / 拖动边缘 | 调整面板大小 |
 
 “跟随 Codex”会识别 Windows 的 `Codex.exe` / `ChatGPT.exe`，以及 macOS 的
@@ -209,6 +210,7 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 | `followCodex` | `true` | 跟随 Codex 自动显示/隐藏 |
 | `watchProcesses` | `Codex, ChatGPT` | 被识别为 Codex 的进程名 |
 | `weatherSwitchIntervalMs` | `600000` | 自动换天气间隔，`0` 为关闭 |
+| `skippedUpdateVersion` | `null` | 用户跳过的版本；更高版本发布后自动重新提醒 |
 
 仓库中的 [config.example.json](config.example.json) 保存公开的默认大小和位置；运行时拖动或缩放产生的个人位置仍只保存在用户配置中。
 
@@ -316,8 +318,8 @@ Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
 发布新版本时，先同步 `package.json` 与 `package-lock.json` 的版本号，再推送同名 Tag：
 
 ```powershell
-git tag -a v2.3.0 -m "Release v2.3.0"
-git push origin v2.3.0
+git tag -a v2.3.1 -m "Release v2.3.1"
+git push origin v2.3.1
 ```
 
 `.github/workflows/release.yml` 会完成跨平台打包、校验清单生成和 GitHub Release 发布。

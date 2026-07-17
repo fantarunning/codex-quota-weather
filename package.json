@@ -1,6 +1,6 @@
 {
   "name": "codex-quota-weather",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "A live Codex quota tray panel with animated weather scenes for Windows and macOS.",
   "main": "main.js",
   "scripts": {
