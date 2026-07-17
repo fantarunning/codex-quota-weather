@@ -125,8 +125,9 @@ The first run creates `%APPDATA%\CodexQuotaWeather\config.json` on Windows or
 
 Important fields include `port`, `refreshMs`, `liveUsageMs`, `lang`, `scale`,
 `defaultTheme`, `defaultBackgroundIndex`, `followCodex`, `watchProcesses`, and
-`weatherSwitchIntervalMs`. See [config.example.json](config.example.json) for all
-public defaults.
+`weatherSwitchIntervalMs`. [config.example.json](config.example.json) contains the
+public default size and position; positions saved while running remain in the
+per-user configuration only.
 
 ## Privacy and security
 

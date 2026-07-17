@@ -160,7 +160,7 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 | `watchProcesses` | `Codex, ChatGPT` | 被识别为 Codex 的进程名 |
 | `weatherSwitchIntervalMs` | `600000` | 自动换天气间隔，`0` 为关闭 |
 
-仓库中的 [config.example.json](config.example.json) 是公开默认值，不包含你的个人窗口位置。
+仓库中的 [config.example.json](config.example.json) 保存公开的默认大小和位置；运行时拖动或缩放产生的个人位置仍只保存在用户配置中。
 
 ## 隐私与安全
 

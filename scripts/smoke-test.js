@@ -9,6 +9,7 @@ process.env.QUOTA_WEATHER_DATA_DIR = path.join(ROOT, ".tmp", "test-settings");
 
 const { fetchLiveUsage, normalizeLive } = require("../liveUsage.js");
 const { startDataServer } = require("../server.js");
+const { defaultConfig } = require("../settings.js");
 
 function get(port, pathname) {
   return new Promise((resolve, reject) => {
@@ -48,6 +49,10 @@ async function main() {
     settingsDataDir({ platform: "darwin", env: {}, home: "/Users/test" }),
     path.join("/Users/test", "Library", "Application Support", "CodexQuotaWeather")
   );
+  const defaults = defaultConfig();
+  assert.strictEqual(defaults.scale, 0.696);
+  assert.strictEqual(defaults.windowX, 1213);
+  assert.strictEqual(defaults.windowY, 647);
 
   for (const file of [
     "main.js",
