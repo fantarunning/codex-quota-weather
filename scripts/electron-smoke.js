@@ -5,6 +5,15 @@ const { startDataServer } = require("../server.js");
 const port = 21000 + Math.floor(Math.random() * 1000);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function waitForRenderer(win, expression, message, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await win.webContents.executeJavaScript(expression)) return;
+    await wait(100);
+  }
+  throw new Error(message);
+}
+
 app.on("window-all-closed", () => {});
 
 async function main() {
@@ -122,7 +131,11 @@ async function main() {
     assert.strictEqual(miniState.calls.trim(), "188");
 
     await win.webContents.executeJavaScript("document.querySelector('#mini .mini-ring').click()");
-    await wait(700);
+    await waitForRenderer(
+      win,
+      "document.getElementById('quota-app-container').dataset.theme === 'beach'",
+      "portrait ring click did not switch weather"
+    );
     const clickedTheme = await win.webContents.executeJavaScript(
       "document.getElementById('quota-app-container').dataset.theme"
     );
@@ -131,7 +144,11 @@ async function main() {
     await win.webContents.executeJavaScript(
       "window.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true }))"
     );
-    await wait(700);
+    await waitForRenderer(
+      win,
+      "document.getElementById('bg-active').style.backgroundImage.includes('beach-1.jpg')",
+      "portrait wheel did not switch background"
+    );
     const scrolledBackground = await win.webContents.executeJavaScript(`({
       background: document.getElementById('bg-active').style.backgroundImage,
       activeDot: Array.from(document.querySelectorAll('.mini-mode-dots span')).findIndex((dot) => dot.classList.contains('active'))
@@ -140,7 +157,11 @@ async function main() {
     assert.strictEqual(scrolledBackground.activeDot, 1, "portrait background indicator did not follow the wheel");
 
     await win.webContents.executeJavaScript("document.getElementById('mini-bg-switcher').click()");
-    await wait(700);
+    await waitForRenderer(
+      win,
+      "document.getElementById('bg-active').style.backgroundImage.includes('beach-2.jpg')",
+      "portrait bottom dots did not switch background"
+    );
     const clickedBackground = await win.webContents.executeJavaScript(`({
       background: document.getElementById('bg-active').style.backgroundImage,
       activeDot: Array.from(document.querySelectorAll('.mini-mode-dots span')).findIndex((dot) => dot.classList.contains('active'))

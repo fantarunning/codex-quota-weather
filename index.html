@@ -491,6 +491,8 @@
                 bgIndices[currentIdx] = Math.max(0, requestedBg) % themes[currentIdx].urls.length;
             }
         } catch (_) {}
+        let requestedThemeIdx = currentIdx;
+        let requestedBgIndices = bgIndices.slice();
 
         const canvas = document.getElementById('weather-canvas');
         const ctx = canvas.getContext('2d');
@@ -1236,16 +1238,22 @@
         }
 
         function updateUIWithSmoothTransition(targetThemeIdx, targetBgIdx) {
+            const themeIdx = targetThemeIdx == null ? requestedThemeIdx : targetThemeIdx;
+            const count = themes[themeIdx].urls.length;
+            const requestedBgIdx = targetBgIdx == null ? requestedBgIndices[themeIdx] : targetBgIdx;
+            const bgIdx = ((requestedBgIdx % count) + count) % count;
+            requestedThemeIdx = themeIdx;
+            requestedBgIndices[themeIdx] = bgIdx;
             pendingTransition = {
-                themeIdx: targetThemeIdx == null ? currentIdx : targetThemeIdx,
-                bgIdx: targetBgIdx == null ? bgIndices[currentIdx] : targetBgIdx,
+                themeIdx,
+                bgIdx,
             };
             drainTransitions();
         }
 
         function toggleWeather(source) {
-            const targetThemeIdx = (currentIdx + 1) % themes.length;
-            updateUIWithSmoothTransition(targetThemeIdx, bgIndices[targetThemeIdx]);
+            const targetThemeIdx = (requestedThemeIdx + 1) % themes.length;
+            updateUIWithSmoothTransition(targetThemeIdx, requestedBgIndices[targetThemeIdx]);
             if (source !== 'auto' && window.quotaShell && window.quotaShell.weatherInteracted) {
                 window.quotaShell.weatherInteracted();
             }
@@ -1257,9 +1265,10 @@
                 if (event.cancelable) event.preventDefault();
             }
             const direction = step < 0 ? -1 : 1;
-            const count = themes[currentIdx].urls.length;
-            const targetBgIdx = (bgIndices[currentIdx] + direction + count) % count;
-            updateUIWithSmoothTransition(currentIdx, targetBgIdx);
+            const themeIdx = requestedThemeIdx;
+            const count = themes[themeIdx].urls.length;
+            const targetBgIdx = (requestedBgIndices[themeIdx] + direction + count) % count;
+            updateUIWithSmoothTransition(themeIdx, targetBgIdx);
             if (window.quotaShell && window.quotaShell.weatherInteracted) {
                 window.quotaShell.weatherInteracted();
             }
