@@ -31,7 +31,13 @@
 
 ### Windows 10/11
 
-在 PowerShell 中运行：
+在 CMD 中运行（推荐，命令更短）：
+
+```cmd
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+也可以在 PowerShell 中运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
@@ -60,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 | macOS | `~/Library/Application Support/CodexQuotaWeather` | 同目录下的 `config.json` |
 
 重复运行对应命令即可更新，窗口位置、缩放和自动天气设置会保留。执行前可先查看
-[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
+[CMD 安装入口](install.cmd)、[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
 
 ## 手动安装
 

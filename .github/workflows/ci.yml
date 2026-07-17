@@ -29,6 +29,25 @@ jobs:
       - run: npm run test:electron
       - run: npm run test:app
       - run: npm audit --audit-level=high
+      - name: Test Windows CMD one-command installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: type install.cmd | cmd
+      - name: Verify and remove Windows CMD installation
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\CodexQuotaWeather'
+          $installedPackage = Get-Content (Join-Path $installRoot 'app\package.json') -Raw | ConvertFrom-Json
+          $sourcePackage = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($installedPackage.version -ne $sourcePackage.version) {
+            throw "Installed $($installedPackage.version), expected $($sourcePackage.version)"
+          }
+          $health = Invoke-RestMethod 'http://127.0.0.1:8787/health'
+          if (-not $health.ok) { throw 'Installed panel health check failed' }
+          & .\uninstall.ps1
+          Start-Sleep -Seconds 5
+          if (Test-Path $installRoot) { throw 'Windows uninstall cleanup failed' }
       - name: Test macOS one-command installer
         if: runner.os == 'macOS'
         shell: bash

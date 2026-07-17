@@ -26,7 +26,13 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 
 ### Windows 10/11
 
-Run in PowerShell:
+Run in Command Prompt (recommended and shorter):
+
+```cmd
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+Or run in PowerShell:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
@@ -50,7 +56,7 @@ installs Electron, runs the smoke test, enables login startup, and launches the 
 | macOS | `~/Library/Application Support/CodexQuotaWeather` | `config.json` in the same directory |
 
 Run the same command again to update without losing window position or preferences.
-You can review the [Windows installer](install.ps1) or
+You can review the [CMD entry point](install.cmd), [Windows installer](install.ps1), or
 [macOS installer](install-macos.sh) before executing it.
 
 ## Manual install
