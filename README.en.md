@@ -26,11 +26,16 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 
 ### Windows 10/11
 
-Run in Command Prompt (recommended and shorter):
+Run in Command Prompt (recommended and shorter; Windows 10/11 includes `curl.exe`):
 
 ```cmd
 curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
 ```
+
+This downloads the one-line [install.cmd](install.cmd) entry point, which calls the
+full [install.ps1](install.ps1) installer. It does not permanently change the
+PowerShell execution policy. Rerun the same CMD command to update; user settings
+are preserved.
 
 Or run in PowerShell:
 
@@ -58,6 +63,20 @@ installs Electron, runs the smoke test, enables login startup, and launches the 
 Run the same command again to update without losing window position or preferences.
 You can review the [CMD entry point](install.cmd), [Windows installer](install.ps1), or
 [macOS installer](install-macos.sh) before executing it.
+
+### Windows CMD install through a proxy
+
+If GitHub, Node.js, or Electron requires a proxy, run these commands in the same
+Command Prompt window:
+
+```cmd
+set HTTPS_PROXY=http://127.0.0.1:10808
+set HTTP_PROXY=http://127.0.0.1:10808
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+Replace `127.0.0.1:10808` with the local proxy address. These temporary variables
+expire when that Command Prompt window closes.
 
 ## Manual install
 
@@ -130,10 +149,14 @@ The first run creates `%APPDATA%\CodexQuotaWeather\config.json` on Windows or
 `~/Library/Application Support/CodexQuotaWeather/config.json` on macOS.
 
 Important fields include `port`, `refreshMs`, `liveUsageMs`, `lang`, `scale`,
-`defaultTheme`, `defaultBackgroundIndex`, `followCodex`, `watchProcesses`, and
-`weatherSwitchIntervalMs`. [config.example.json](config.example.json) contains the
-public default size and position; positions saved while running remain in the
-per-user configuration only.
+`windowX`, `windowY`, `defaultTheme`, `defaultBackgroundIndex`, `followCodex`,
+`watchProcesses`, and `weatherSwitchIntervalMs`. [config.example.json](config.example.json)
+contains the public default size and position; positions saved while running remain
+in the per-user configuration only.
+
+The current first-run panel defaults are scale `0.696`, position `1213,647`, and
+an approximate content size of `473 × 264`. Smaller displays clamp the position
+into the visible work area.
 
 ## Privacy and security
 
@@ -158,18 +181,33 @@ Left-click the Windows tray or macOS menu bar icon, verify that “Follow Codex�
 
 ### Electron download fails
 
-Set `HTTPS_PROXY` and `HTTP_PROXY` in the same PowerShell or Terminal window, then
-rerun the platform-specific installer.
+Set `HTTPS_PROXY` and `HTTP_PROXY` in the same terminal window, then rerun the
+platform-specific installer. In Command Prompt:
+
+```cmd
+set HTTPS_PROXY=http://127.0.0.1:10808
+set HTTP_PROXY=http://127.0.0.1:10808
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+### Command Prompt cannot find `curl`
+
+Confirm Windows 10/11 and run `where curl`. If it is still unavailable, use the
+PowerShell one-command installer above; no separate curl installation is required.
 
 ## Uninstall
 
-Windows:
+Windows Command Prompt:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1"
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1"
 ```
 
-Add `-KeepSettings` to preserve preferences.
+Append `-KeepSettings` to preserve preferences:
+
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
+```
 
 macOS:
 

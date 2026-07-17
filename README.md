@@ -31,11 +31,15 @@
 
 ### Windows 10/11
 
-在 CMD 中运行（推荐，命令更短）：
+在 CMD 中运行（推荐，命令更短；Windows 10/11 自带 `curl.exe`）：
 
 ```cmd
 curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
 ```
+
+这条命令先下载只有一行的 [install.cmd](install.cmd)，再调用完整的
+[install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。安装完成后会自动启动悬浮窗；
+以后重复运行同一条 CMD 命令即可更新，个人配置不会被覆盖。
 
 也可以在 PowerShell 中运行：
 
@@ -67,6 +71,18 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 
 重复运行对应命令即可更新，窗口位置、缩放和自动天气设置会保留。执行前可先查看
 [CMD 安装入口](install.cmd)、[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
+
+### Windows CMD 代理安装
+
+如果 GitHub、Node.js 或 Electron 下载需要代理，在同一个 CMD 窗口执行：
+
+```cmd
+set HTTPS_PROXY=http://127.0.0.1:10808
+set HTTP_PROXY=http://127.0.0.1:10808
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+请把 `127.0.0.1:10808` 换成本机代理地址。关闭该 CMD 窗口后，这两个临时环境变量自动失效。
 
 ## 手动安装
 
@@ -159,7 +175,9 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 | `liveUsageMs` | `60000` | 周额度实时刷新间隔 |
 | `alwaysOnTop` | `true` | 默认置顶 |
 | `lang` | `zh` | `zh` 或 `en` |
-| `scale` | `0.8` | 面板缩放 |
+| `scale` | `0.696` | 面板缩放，对应默认内容尺寸约 `473 × 264` |
+| `windowX` | `1213` | 默认窗口左上角横坐标，小屏幕会自动限制在可视区域 |
+| `windowY` | `647` | 默认窗口左上角纵坐标，小屏幕会自动限制在可视区域 |
 | `defaultTheme` | `rain` | `rain / meteor / blossom / snow / beach` |
 | `defaultBackgroundIndex` | `1` | 默认背景序号，范围 `0-2` |
 | `followCodex` | `true` | 跟随 Codex 自动显示/隐藏 |
@@ -199,12 +217,25 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 
 ### 安装时 Electron 下载失败
 
-在同一个终端窗口设置代理后，重试对应平台的一行安装命令。Windows PowerShell：
+在同一个终端窗口设置代理后，重试对应平台的一行安装命令。Windows CMD：
+
+```cmd
+set HTTPS_PROXY=http://127.0.0.1:10808
+set HTTP_PROXY=http://127.0.0.1:10808
+curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+```
+
+Windows PowerShell：
 
 ```powershell
 $env:HTTPS_PROXY = "http://127.0.0.1:10808"
 $env:HTTP_PROXY = "http://127.0.0.1:10808"
 ```
+
+### CMD 提示找不到 `curl`
+
+确认系统为 Windows 10/11，并在 CMD 中执行 `where curl`。如果仍找不到，直接使用上面的
+PowerShell 安装命令，不需要另外安装 curl。
 
 macOS：
 
@@ -215,16 +246,16 @@ export HTTP_PROXY=http://127.0.0.1:10808
 
 ## 卸载
 
-Windows：
+Windows CMD：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1"
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1"
 ```
 
 保留个人设置：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
 ```
 
 macOS：
