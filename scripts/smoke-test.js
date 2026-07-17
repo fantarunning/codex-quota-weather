@@ -94,6 +94,10 @@ async function main() {
   const mainSource = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
   assert(mainSource.includes("quota:skip-update"), "skip-update IPC handler is missing");
   assert(!mainSource.includes("版本与更新 / Version & updates"), "tray still contains the version/update menu");
+  const macInstaller = fs.readFileSync(path.join(ROOT, "install-macos.sh"), "utf8");
+  assert(!macInstaller.includes("$($NODE "), "macOS installer invokes the private Node path without quotes");
+  const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+  assert(ciWorkflow.includes("Codex Quota Weather CI"), "macOS CI install path must exercise spaces");
 
   const fixtureRoot = path.join(ROOT, ".tmp", "cross-midnight-sessions");
   fs.rmSync(fixtureRoot, { recursive: true, force: true });

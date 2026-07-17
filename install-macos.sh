@@ -129,7 +129,7 @@ mkdir -p "$INSTALL_DIR" "$VERSIONS_DIR" "$LAUNCHER_DIR" "$STATE_DIR"
 stop_installed_app
 install_node
 NODE="$NODE_DIR/bin/node"
-VERSION=$($NODE -p "require(process.argv[1]).version" "$SOURCE_PATH/package.json")
+VERSION=$("$NODE" -p "require(process.argv[1]).version" "$SOURCE_PATH/package.json")
 case "$VERSION" in
   [0-9]*.[0-9]*.[0-9]*) ;;
   *) echo "Invalid package version: $VERSION" >&2; exit 1 ;;
@@ -137,13 +137,13 @@ esac
 VERSION_DIR="$VERSIONS_DIR/$VERSION"
 OLD_CURRENT=""
 if [ -f "$STATE_FILE" ]; then
-  OLD_CURRENT=$($NODE -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).currentVersion||"")}catch{}' "$STATE_FILE")
+  OLD_CURRENT=$("$NODE" -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).currentVersion||"")}catch{}' "$STATE_FILE")
 fi
 
 if [ -d "$LEGACY_APP_DIR" ]; then
   LEGACY_VERSION="0.0.0-legacy"
   if [ -f "$LEGACY_APP_DIR/package.json" ]; then
-    LEGACY_VERSION=$($NODE -e 'try{process.stdout.write(require(process.argv[1]).version||"0.0.0-legacy")}catch{process.stdout.write("0.0.0-legacy")}' "$LEGACY_APP_DIR/package.json")
+    LEGACY_VERSION=$("$NODE" -e 'try{process.stdout.write(require(process.argv[1]).version||"0.0.0-legacy")}catch{process.stdout.write("0.0.0-legacy")}' "$LEGACY_APP_DIR/package.json")
   fi
   LEGACY_TARGET="$VERSIONS_DIR/$LEGACY_VERSION"
   if [ ! -d "$LEGACY_TARGET" ]; then
