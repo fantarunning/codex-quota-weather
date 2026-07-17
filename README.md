@@ -7,6 +7,7 @@
 [English](README.en.md) · [安装](#一行安装) · [使用说明](#使用说明) · [故障排查](#故障排查)
 
 ![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-2563EB?logo=windows)
+![macOS](https://img.shields.io/badge/macOS-13.5%2B-111827?logo=apple)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron)
 ![License](https://img.shields.io/badge/code-MIT-22C55E)
 
@@ -21,46 +22,51 @@
 - 展示今日 Token、当前上下文、今日调用次数和会话数。
 - 内置雨景、流星、花瓣、雪景和海浪五套天气，每套包含三张背景。
 - 默认每 10 分钟自动换天气，可在托盘菜单切换为关闭、1、5、10 或 30 分钟。
-- 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从系统托盘手动控制。
+- 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从 Windows 系统托盘或 macOS 菜单栏手动控制。
+- 原生支持 Windows 10/11、Apple Silicon Mac 和 Intel Mac。
 - 支持置顶、缩放、拖动、缩成悬浮球、中英文和减少动态效果。
 - 所有数据只在本机处理，本地服务仅监听 `127.0.0.1`。
 
 ## 一行安装
 
-在 Windows PowerShell 中运行：
+### Windows 10/11
+
+在 PowerShell 中运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
 ```
 
-安装器无需管理员权限，也不要求电脑预先安装 Node.js。它会：
+### macOS 13.5+（Apple Silicon / Intel）
+
+在“终端”中运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install-macos.sh | bash
+```
+
+两个安装器都无需管理员权限，也不要求电脑预先安装 Node.js。它们会：
 
 1. 下载最新源码；
 2. 在应用目录安装独立的 Node.js 24 和 Electron；
 3. 校验 Node.js 下载文件的 SHA-256；
 4. 安装依赖并执行烟雾测试；
-5. 创建 Windows 开机启动项；
+5. 创建 Windows Startup 或 macOS LaunchAgent 开机启动项；
 6. 启动悬浮窗。
 
-默认应用目录：
+| 平台 | 应用目录 | 个人设置 |
+| --- | --- | --- |
+| Windows | `%LOCALAPPDATA%\Programs\CodexQuotaWeather` | `%APPDATA%\CodexQuotaWeather\config.json` |
+| macOS | `~/Library/Application Support/CodexQuotaWeather` | 同目录下的 `config.json` |
 
-```text
-%LOCALAPPDATA%\Programs\CodexQuotaWeather
-```
-
-个人设置目录：
-
-```text
-%APPDATA%\CodexQuotaWeather\config.json
-```
-
-重复运行同一条命令即可更新，窗口位置、缩放和自动天气设置会保留。你也可以先[查看安装脚本](install.ps1)再执行。
+重复运行对应命令即可更新，窗口位置、缩放和自动天气设置会保留。执行前可先查看
+[Windows 安装脚本](install.ps1)或 [macOS 安装脚本](install-macos.sh)。
 
 ## 手动安装
 
 需要 Git 和 Node.js `>= 22.12.0`：
 
-```powershell
+```bash
 git clone https://github.com/fantarunning/codex-quota-weather.git
 cd codex-quota-weather
 npm ci
@@ -68,11 +74,19 @@ npm test
 npm start
 ```
 
-如果 Electron 下载需要代理，请先设置：
+如果 Electron 下载需要代理，请先设置。Windows PowerShell：
 
 ```powershell
 $env:HTTPS_PROXY = "http://127.0.0.1:10808"
 $env:HTTP_PROXY = "http://127.0.0.1:10808"
+npm run setup:electron
+```
+
+macOS 终端：
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:10808
+export HTTP_PROXY=http://127.0.0.1:10808
 npm run setup:electron
 ```
 
@@ -86,12 +100,12 @@ npm run setup:electron
 | 点击 `−` | 缩成只显示周额度的悬浮球 |
 | 点击铃铛图标 | 开关窗口置顶 |
 | 点击 `×` | 隐藏面板，程序仍留在系统托盘 |
-| 左键托盘图标 | 显示或隐藏面板 |
-| 右键托盘图标 | 设置跟随 Codex、自动天气或退出 |
+| 左键托盘/菜单栏图标 | 显示或隐藏面板 |
+| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气或退出 |
 | `Ctrl + 滚轮` / 拖动边缘 | 调整面板大小 |
 
-托盘中的“跟随 Codex”会识别 `Codex.exe` 和 Codex Desktop 使用的
-`ChatGPT.exe`。手动隐藏后，本次 Codex 运行期间不会反复弹出。
+“跟随 Codex”会识别 Windows 的 `Codex.exe` / `ChatGPT.exe`，以及 macOS 的
+`Codex` / `ChatGPT`。手动隐藏后，本次 Codex 运行期间不会反复弹出。
 
 ## 数据含义
 
@@ -129,7 +143,8 @@ npm run setup:electron
 
 ## 配置
 
-首次运行会创建 `%APPDATA%\CodexQuotaWeather\config.json`。修改后重启应用生效。
+首次运行会创建个人配置：Windows 位于 `%APPDATA%\CodexQuotaWeather\config.json`，
+macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修改后重启应用生效。
 
 | 字段 | 默认值 | 说明 |
 | --- | ---: | --- |
@@ -168,7 +183,7 @@ npm run setup:electron
 
 ### Codex 打开后面板没有出现
 
-- 左键单击系统托盘里的 Codex Quota Weather 图标；
+- 左键单击 Windows 系统托盘或 macOS 菜单栏里的 Codex Quota Weather 图标；
 - 右键确认“跟随 Codex”已勾选；
 - 检查配置中的 `watchProcesses` 是否包含本机进程名。
 
@@ -178,14 +193,23 @@ npm run setup:electron
 
 ### 安装时 Electron 下载失败
 
-在同一个 PowerShell 窗口先设置代理后重试一行安装命令：
+在同一个终端窗口设置代理后，重试对应平台的一行安装命令。Windows PowerShell：
 
 ```powershell
 $env:HTTPS_PROXY = "http://127.0.0.1:10808"
 $env:HTTP_PROXY = "http://127.0.0.1:10808"
 ```
 
+macOS：
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:10808
+export HTTP_PROXY=http://127.0.0.1:10808
+```
+
 ## 卸载
+
+Windows：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1"
@@ -197,19 +221,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1" -KeepSettings
 ```
 
+macOS：
+
+```bash
+bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh"
+```
+
+macOS 保留个人设置：
+
+```bash
+bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh" --keep-settings
+```
+
 ## 开发与验证
 
 ```powershell
 npm ci
 npm test
+npm run test:electron
+npm run test:app
 npm run test:live
 npm run capture:docs
 python scripts/build-doc-gifs.py
 ```
 
 `npm test` 会校验 JavaScript 语法、Electron 运行时、15 张背景、五套主题、
-本地 HTTP API 和演示渲染入口。GitHub Actions 会在 Windows 上重复执行测试和
-`npm audit`。
+本地 HTTP API 和演示渲染入口。`npm run test:electron` 会验证天气画布，
+`npm run test:app` 会启动完整托盘主进程和透明窗口。GitHub Actions 会在 Windows x64、Apple Silicon macOS 和
+Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
 
 ## 许可证
 

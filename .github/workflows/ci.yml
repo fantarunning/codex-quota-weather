@@ -6,7 +6,18 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS Apple Silicon
+            os: macos-latest
+          - name: macOS Intel
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,4 +26,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:electron
+      - run: npm run test:app
       - run: npm audit --audit-level=high
+      - name: Test macOS one-command installer
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CODEX_QUOTA_WEATHER_SOURCE_DIR: ${{ github.workspace }}
+          CODEX_QUOTA_WEATHER_INSTALL_DIR: ${{ runner.temp }}/CodexQuotaWeather-CI
+          CODEX_QUOTA_WEATHER_NO_STARTUP: "1"
+          CODEX_QUOTA_WEATHER_NO_LAUNCH: "1"
+        run: |
+          bash ./install-macos.sh
+          test -x "$CODEX_QUOTA_WEATHER_INSTALL_DIR/app/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+          "$CODEX_QUOTA_WEATHER_INSTALL_DIR/runtime/node/bin/node" \
+            "$CODEX_QUOTA_WEATHER_INSTALL_DIR/app/scripts/smoke-test.js"
+          bash ./uninstall-macos.sh
+          test ! -d "$CODEX_QUOTA_WEATHER_INSTALL_DIR"

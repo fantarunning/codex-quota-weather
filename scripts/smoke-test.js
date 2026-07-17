@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { electronExecutable, settingsDataDir } = require("../platform.js");
 
 const ROOT = path.resolve(__dirname, "..");
 process.env.QUOTA_WEATHER_DATA_DIR = path.join(ROOT, ".tmp", "test-settings");
@@ -34,11 +35,28 @@ async function main() {
   assert.strictEqual(typeof fetchLiveUsage, "function");
   assert.strictEqual(typeof normalizeLive, "function");
   assert(
-    fs.existsSync(path.join(ROOT, "node_modules", "electron", "dist", "electron.exe")),
+    fs.existsSync(electronExecutable(ROOT)),
     "Electron runtime is missing; run npm run setup:electron"
   );
+  assert(electronExecutable(ROOT, "win32").endsWith(path.join("dist", "electron.exe")));
+  assert(
+    electronExecutable(ROOT, "darwin").endsWith(
+      path.join("Electron.app", "Contents", "MacOS", "Electron")
+    )
+  );
+  assert.strictEqual(
+    settingsDataDir({ platform: "darwin", env: {}, home: "/Users/test" }),
+    path.join("/Users/test", "Library", "Application Support", "CodexQuotaWeather")
+  );
 
-  for (const file of ["main.js", "server.js", "liveUsage.js", "preload.js", "settings.js"]) {
+  for (const file of [
+    "main.js",
+    "server.js",
+    "liveUsage.js",
+    "platform.js",
+    "preload.js",
+    "settings.js",
+  ]) {
     const source = fs
       .readFileSync(path.join(ROOT, file), "utf8")
       .replace(/^#![^\r\n]*(?:\r?\n|$)/, "");

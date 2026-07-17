@@ -1,10 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { electronExecutable } = require("../platform.js");
 
 const root = path.resolve(__dirname, "..");
 const electronDir = path.join(root, "node_modules", "electron");
-const executable = path.join(electronDir, "dist", "electron.exe");
+const executable = electronExecutable(root);
 
 if (fs.existsSync(executable)) {
   console.log("Electron runtime is already installed.");

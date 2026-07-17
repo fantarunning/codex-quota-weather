@@ -2,7 +2,7 @@
 
 # Codex Quota Weather
 
-A live Codex quota tray panel with five animated weather scenes for Windows.
+A live Codex quota tray panel with five animated weather scenes for Windows and macOS.
 
 [中文](README.md) · [Install](#one-command-install) · [Usage](#usage) · [Troubleshooting](#troubleshooting)
 
@@ -17,33 +17,47 @@ A live Codex quota tray panel with five animated weather scenes for Windows.
 - Shows today's tokens, current context, call count, and session count.
 - Includes rain, meteor, blossom, snow, and ocean scenes with three backgrounds each.
 - Rotates weather automatically; choose off, 1, 5, 10, or 30 minutes from the tray.
-- Follows both Codex Desktop (`ChatGPT.exe`) and Codex CLI (`Codex.exe`).
+- Follows Codex Desktop (`ChatGPT` / `ChatGPT.exe`) and Codex CLI (`Codex` / `Codex.exe`).
+- Supports Windows 10/11, Apple Silicon Macs, and Intel Macs.
 - Supports pinning, resizing, a compact floating orb, Chinese/English, and reduced motion.
 - Processes data locally and binds its HTTP service only to `127.0.0.1`.
 
 ## One-command install
 
-Run in Windows PowerShell:
+### Windows 10/11
+
+Run in PowerShell:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.ps1 | iex"
 ```
 
-The installer requires no administrator access and no preinstalled Node.js. It downloads
-a private Node.js 24 runtime, verifies its SHA-256 checksum, installs Electron, runs the
-smoke test, creates a startup shortcut, and launches the panel.
+### macOS 13.5+ (Apple Silicon / Intel)
 
-- Application: `%LOCALAPPDATA%\Programs\CodexQuotaWeather`
-- User settings: `%APPDATA%\CodexQuotaWeather\config.json`
+Run in Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install-macos.sh | bash
+```
+
+Neither installer requires administrator access or a preinstalled Node.js. It downloads
+a private Node.js 24 runtime for the current architecture, verifies its SHA-256 checksum,
+installs Electron, runs the smoke test, enables login startup, and launches the panel.
+
+| Platform | Application | User settings |
+| --- | --- | --- |
+| Windows | `%LOCALAPPDATA%\Programs\CodexQuotaWeather` | `%APPDATA%\CodexQuotaWeather\config.json` |
+| macOS | `~/Library/Application Support/CodexQuotaWeather` | `config.json` in the same directory |
 
 Run the same command again to update without losing window position or preferences.
-You can [review the installer](install.ps1) before executing it.
+You can review the [Windows installer](install.ps1) or
+[macOS installer](install-macos.sh) before executing it.
 
 ## Manual install
 
 Git and Node.js `>= 22.12.0` are required:
 
-```powershell
+```bash
 git clone https://github.com/fantarunning/codex-quota-weather.git
 cd codex-quota-weather
 npm ci
@@ -51,11 +65,19 @@ npm test
 npm start
 ```
 
-If Electron needs a proxy:
+If Electron needs a proxy, configure it first. Windows PowerShell:
 
 ```powershell
 $env:HTTPS_PROXY = "http://127.0.0.1:10808"
 $env:HTTP_PROXY = "http://127.0.0.1:10808"
+npm run setup:electron
+```
+
+macOS Terminal:
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:10808
+export HTTP_PROXY=http://127.0.0.1:10808
 npm run setup:electron
 ```
 
@@ -69,8 +91,8 @@ npm run setup:electron
 | Click `−` | Collapse to a weekly-quota orb |
 | Click the bell | Toggle always-on-top |
 | Click `×` | Hide the panel but keep the tray app running |
-| Left-click the tray icon | Show or hide the panel |
-| Right-click the tray icon | Configure Codex following, weather rotation, or quit |
+| Left-click the tray/menu bar icon | Show or hide the panel |
+| Right-click the tray/menu bar icon | Configure Codex following, weather rotation, or quit |
 | `Ctrl + wheel` / drag an edge | Resize the panel |
 
 ## What the numbers mean
@@ -98,7 +120,8 @@ The ring uses a **remaining** percentage. If Codex says “26% used,” this app
 
 ## Configuration
 
-The first run creates `%APPDATA%\CodexQuotaWeather\config.json`.
+The first run creates `%APPDATA%\CodexQuotaWeather\config.json` on Windows or
+`~/Library/Application Support/CodexQuotaWeather/config.json` on macOS.
 
 Important fields include `port`, `refreshMs`, `liveUsageMs`, `lang`, `scale`,
 `defaultTheme`, `defaultBackgroundIndex`, `followCodex`, `watchProcesses`, and
@@ -123,15 +146,17 @@ See [SECURITY.md](SECURITY.md).
 
 ### The panel does not appear with Codex
 
-Left-click the tray icon, verify that “Follow Codex” is enabled, and check the
+Left-click the Windows tray or macOS menu bar icon, verify that “Follow Codex” is enabled, and check the
 `watchProcesses` setting.
 
 ### Electron download fails
 
-Set `HTTPS_PROXY` and `HTTP_PROXY` in the same PowerShell window, then rerun the
-installer.
+Set `HTTPS_PROXY` and `HTTP_PROXY` in the same PowerShell or Terminal window, then
+rerun the platform-specific installer.
 
 ## Uninstall
+
+Windows:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\CodexQuotaWeather\app\uninstall.ps1"
@@ -139,18 +164,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\
 
 Add `-KeepSettings` to preserve preferences.
 
+macOS:
+
+```bash
+bash "$HOME/Library/Application Support/CodexQuotaWeather/app/uninstall-macos.sh"
+```
+
+Add `--keep-settings` to preserve preferences.
+
 ## Development
 
 ```powershell
 npm ci
 npm test
+npm run test:electron
+npm run test:app
 npm run test:live
 npm run capture:docs
 python scripts/build-doc-gifs.py
 ```
 
-The smoke test validates JavaScript syntax, the Electron runtime, all 15 bundled
-backgrounds, five themes, the local HTTP API, and the deterministic demo renderer.
+The smoke tests validate JavaScript syntax, the Electron runtime, all 15 bundled
+backgrounds, five themes, the local HTTP API, a hidden renderer, and the complete
+tray application process.
+GitHub Actions repeats them on Windows x64, Apple Silicon macOS, and Intel macOS.
 
 ## License
 

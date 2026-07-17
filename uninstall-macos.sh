@@ -1,0 +1,53 @@
+#!/bin/sh
+set -eu
+unset CDPATH
+
+INSTALL_DIR=${CODEX_QUOTA_WEATHER_INSTALL_DIR:-"$HOME/Library/Application Support/CodexQuotaWeather"}
+KEEP_SETTINGS=${CODEX_QUOTA_WEATHER_KEEP_SETTINGS:-0}
+LABEL="com.fantarunning.codex-quota-weather"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+if [ "${1:-}" = "--keep-settings" ]; then
+  KEEP_SETTINGS=1
+fi
+
+case "$INSTALL_DIR" in
+  /*) ;;
+  *) echo "Install path must be absolute: $INSTALL_DIR" >&2; exit 1 ;;
+esac
+case "$(basename "$INSTALL_DIR")" in
+  CodexQuotaWeather*) ;;
+  *) echo "Refusing to remove an unsafe installation target: $INSTALL_DIR" >&2; exit 1 ;;
+esac
+if [ "$INSTALL_DIR" = "/" ] || [ "$INSTALL_DIR" = "$HOME" ]; then
+  echo "Refusing to remove an unsafe installation target: $INSTALL_DIR" >&2
+  exit 1
+fi
+
+launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
+rm -f "$PLIST"
+
+APP_DIR="$INSTALL_DIR/app"
+if command -v pgrep >/dev/null 2>&1; then
+  PIDS=$(pgrep -f "$APP_DIR" 2>/dev/null || true)
+  if [ -n "$PIDS" ]; then
+    printf '%s\n' "$PIDS" | while IFS= read -r PID; do
+      kill "$PID" 2>/dev/null || true
+    done
+    sleep 1
+  fi
+fi
+
+SAVED_CONFIG=""
+if [ "$KEEP_SETTINGS" = "1" ] && [ -f "$INSTALL_DIR/config.json" ]; then
+  SAVED_CONFIG=$(mktemp "${TMPDIR:-/tmp}/codex-quota-config.XXXXXX")
+  cp "$INSTALL_DIR/config.json" "$SAVED_CONFIG"
+fi
+
+rm -rf "$INSTALL_DIR"
+if [ -n "$SAVED_CONFIG" ] && [ -f "$SAVED_CONFIG" ]; then
+  mkdir -p "$INSTALL_DIR"
+  mv "$SAVED_CONFIG" "$INSTALL_DIR/config.json"
+fi
+
+printf '\033[32mCodex Quota Weather has been uninstalled.\033[0m\n'

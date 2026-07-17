@@ -19,6 +19,7 @@ const { execFile } = require('child_process');
 const { loadConfig, updateConfig } = require('./settings.js');
 
 const APP_DIR = __dirname;
+const SMOKE_MODE = process.env.QUOTA_WEATHER_SMOKE === '1';
 
 // ---- config ---------------------------------------------------------------
 
@@ -33,9 +34,11 @@ let cfg = loadConfig();
 let scale = clampScale(cfg.scale || 0.8);
 let win = null;
 let tray = null;
+let trayMenu = null;
 let dataServer = null;
 let watchTimer = null;
 let weatherSwitchTimer = null;
+let smokeTimer = null;
 let followCodex = cfg.followCodex !== false;
 let userHidden = false; // set true when the user manually hides while Codex runs
 let minimized = false;  // true when the card is collapsed to the floating orb
@@ -119,6 +122,21 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(scale);
     resetWeatherSwitchTimer();
+    if (SMOKE_MODE) {
+      win.webContents.executeJavaScript(`({
+        theme: document.getElementById('quota-app-container').dataset.theme,
+        title: document.querySelector('.header-title').textContent
+      })`).then((state) => {
+        if (!state || state.theme !== (cfg.defaultTheme || 'rain') || !state.title) {
+          throw new Error('renderer state is incomplete');
+        }
+        console.log(`[quota-weather] full app smoke passed on ${process.platform}/${process.arch}`);
+        setTimeout(quitAll, 100);
+      }).catch((error) => {
+        console.error('[quota-weather] full app smoke failed:', error);
+        app.exit(1);
+      });
+    }
   });
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
@@ -234,14 +252,18 @@ function applyScale(next) {
 
 // ---- watchdog: follow Codex Desktop / CLI (no admin, cheap polling) --------
 
-function codexRunning() {
+function watchedProcessNames() {
+  const configured = Array.isArray(cfg.watchProcesses) ? [...cfg.watchProcesses] : [];
+  if (cfg.watchProcess) configured.push(cfg.watchProcess);
+  const processNames = [...new Set(configured)]
+    .map((name) => String(name).replace(/\.exe$/i, ''))
+    .filter((name) => /^[a-z0-9._-]+$/i.test(name));
+  if (!processNames.length) processNames.push('Codex', 'ChatGPT');
+  return processNames;
+}
+
+function codexRunningWindows(processNames) {
   return new Promise((resolve) => {
-    const configured = Array.isArray(cfg.watchProcesses) ? [...cfg.watchProcesses] : [];
-    if (cfg.watchProcess) configured.push(cfg.watchProcess);
-    const processNames = [...new Set(configured)]
-      .map((name) => String(name).replace(/\.exe$/i, ''))
-      .filter((name) => /^[a-z0-9._-]+$/i.test(name));
-    if (!processNames.length) processNames.push('Codex', 'ChatGPT');
     const quotedNames = processNames.map((name) => `'${name}'`).join(',');
     const command =
       `$found = Get-Process -Name @(${quotedNames}) -ErrorAction SilentlyContinue; ` +
@@ -256,6 +278,33 @@ function codexRunning() {
       }
     );
   });
+}
+
+function codexRunningPosix(processNames) {
+  return new Promise((resolve) => {
+    const pattern = processNames
+      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    execFile(
+      '/usr/bin/pgrep',
+      ['-x', pattern],
+      { timeout: 4000 },
+      (err, stdout) => {
+        if (!err) return resolve(Boolean(String(stdout || '').trim()));
+        if (Number(err.code) === 1) return resolve(false);
+        resolve(null);
+      }
+    );
+  });
+}
+
+function codexRunning() {
+  const processNames = watchedProcessNames();
+  if (process.platform === 'win32') return codexRunningWindows(processNames);
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    return codexRunningPosix(processNames);
+  }
+  return Promise.resolve(null);
 }
 
 let lastCodexState = null;
@@ -311,9 +360,16 @@ function buildTray() {
     // fallback: a tiny 1x1 so Tray still constructs
     img = nativeImage.createEmpty();
   }
+  if (process.platform === 'darwin' && !img.isEmpty()) {
+    img = img.resize({ width: 18, height: 18 });
+    img.setTemplateImage(true);
+  }
   tray = new Tray(img);
   tray.setToolTip('Codex Quota');
   tray.on('click', () => togglePanel());
+  tray.on('right-click', () => {
+    if (trayMenu) tray.popUpContextMenu(trayMenu);
+  });
   updateTrayMenu();
 }
 
@@ -348,7 +404,8 @@ function updateTrayMenu() {
     { type: 'separator' },
     { label: '退出 / Quit', click: () => quitAll() },
   ]);
-  tray.setContextMenu(menu);
+  trayMenu = menu;
+  if (process.platform !== 'darwin') tray.setContextMenu(menu);
 }
 
 // ---- IPC from renderer ----------------------------------------------------
@@ -451,6 +508,7 @@ ipcMain.on('quota:resize-end', () => {
 function quitAll() {
   if (watchTimer) clearInterval(watchTimer);
   if (weatherSwitchTimer) clearInterval(weatherSwitchTimer);
+  if (smokeTimer) clearTimeout(smokeTimer);
   try { if (dataServer) dataServer.close(); } catch (_) {}
   if (tray) { tray.destroy(); tray = null; }
   app.quit();
@@ -464,12 +522,21 @@ if (!gotLock) {
   app.on('second-instance', () => showPanel());
 
   app.whenReady().then(() => {
+    if (process.platform === 'darwin' && app.dock) app.dock.hide();
     // start the in-process data server
     const { startDataServer } = require('./server.js');
     dataServer = startDataServer({ port: cfg.port, standalone: false });
 
     buildTray();
-    startWatchdog();
+    if (SMOKE_MODE) {
+      showPanel();
+      smokeTimer = setTimeout(() => {
+        console.error('[quota-weather] full app smoke timed out');
+        app.exit(1);
+      }, 15000);
+    } else {
+      startWatchdog();
+    }
 
     // If Codex is already running at launch, the first watchTick shows the panel.
     // If not, we stay quietly in the tray until Codex appears (or user clicks).

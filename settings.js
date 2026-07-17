@@ -1,13 +1,11 @@
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const { settingsDataDir } = require("./platform.js");
 
 const APP_DIR = __dirname;
 const DEFAULT_CONFIG_PATH = path.join(APP_DIR, "config.example.json");
 const LEGACY_CONFIG_PATH = path.join(APP_DIR, "config.json");
-const DATA_DIR =
-  process.env.QUOTA_WEATHER_DATA_DIR ||
-  path.join(process.env.APPDATA || os.homedir(), "CodexQuotaWeather");
+const DATA_DIR = settingsDataDir();
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 
 const BUILTIN_DEFAULTS = {
