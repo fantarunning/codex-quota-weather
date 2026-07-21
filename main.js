@@ -256,10 +256,18 @@ function createWindow() {
           const rect = document.querySelector('#mini .mini-top').getBoundingClientRect();
           return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
         })()`);
-        win.webContents.sendInputEvent({ type: 'mouseMove', x: portraitTitlePoint.x, y: portraitTitlePoint.y });
-        win.webContents.sendInputEvent({ type: 'mouseDown', x: portraitTitlePoint.x, y: portraitTitlePoint.y, button: 'left', clickCount: 1 });
+        // sendInputEvent uses unzoomed content coordinates on macOS. Convert
+        // the renderer's CSS coordinates so the physical click lands on the
+        // title at every portrait zoom and display scale factor.
+        const portraitInputScale = win.webContents.getZoomFactor();
+        const portraitTitleInputPoint = {
+          x: Math.round(portraitTitlePoint.x * portraitInputScale),
+          y: Math.round(portraitTitlePoint.y * portraitInputScale),
+        };
+        win.webContents.sendInputEvent({ type: 'mouseMove', x: portraitTitleInputPoint.x, y: portraitTitleInputPoint.y });
+        win.webContents.sendInputEvent({ type: 'mouseDown', x: portraitTitleInputPoint.x, y: portraitTitleInputPoint.y, button: 'left', clickCount: 1 });
         await new Promise((resolve) => setTimeout(resolve, 45));
-        win.webContents.sendInputEvent({ type: 'mouseUp', x: portraitTitlePoint.x, y: portraitTitlePoint.y, button: 'left', clickCount: 1 });
+        win.webContents.sendInputEvent({ type: 'mouseUp', x: portraitTitleInputPoint.x, y: portraitTitleInputPoint.y, button: 'left', clickCount: 1 });
         await waitForViewMorph('dock');
         const [titleDockWidth, titleDockHeight] = win.getContentSize();
         if (viewMode !== 'dock' || dockSide !== expectedTitleDockSide ||
