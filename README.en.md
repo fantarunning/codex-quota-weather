@@ -24,7 +24,7 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 - Supports in-panel updates and version rollback, plus automatic recovery from a failed update.
 - Processes data locally and binds its HTTP service only to `127.0.0.1`.
 
-## What's new in v2.5.1
+## What's new in v2.5.2
 
 - Adds a `128 × 52` edge-docked HUD that keeps the active weather background and animation while showing only weekly quota, status, and `Codex`.
 - Clicking `Codex` cycles landscape → portrait → dock → landscape; dragging either card to a display edge also docks it automatically.
@@ -317,8 +317,8 @@ GitHub Actions repeats them on Windows x64, Apple Silicon macOS, and Intel macOS
 To publish, update the package version and push the matching annotated tag:
 
 ```powershell
-git tag -a v2.5.1 -m "Release v2.5.1"
-git push origin v2.5.1
+git tag -a v2.5.2 -m "Release v2.5.2"
+git push origin v2.5.2
 ```
 
 `.github/workflows/release.yml` builds the three archives, generates checksums,

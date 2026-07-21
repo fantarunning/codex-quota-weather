@@ -303,7 +303,6 @@ async function main() {
     const rainMotionStart = await win.webContents.executeJavaScript(
       "particles.slice(0, 8).map((particle) => [particle.x, particle.y])"
     );
-    await wait(220);
     const changedDockWeather = await win.webContents.executeJavaScript(`({
       theme: document.getElementById('quota-app-container').dataset.theme,
       background: document.getElementById('bg-active').style.backgroundImage,
@@ -324,6 +323,13 @@ async function main() {
     assert.strictEqual(changedDockWeather.canvasWidth, 128);
     assert.strictEqual(changedDockWeather.canvasHeight, 52);
 
+    const serializedRainMotionStart = JSON.stringify(rainMotionStart);
+    await waitForRenderer(
+      win,
+      `JSON.stringify(particles.slice(0, 8).map((particle) => [particle.x, particle.y])) !== ${JSON.stringify(serializedRainMotionStart)}`,
+      "edge dock weather particles did not animate within the renderer deadline",
+      4000
+    );
     const rainMotionEnd = await win.webContents.executeJavaScript(
       "particles.slice(0, 8).map((particle) => [particle.x, particle.y])"
     );

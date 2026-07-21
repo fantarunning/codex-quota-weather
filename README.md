@@ -29,7 +29,7 @@
 - 支持悬浮窗内下载更新、历史版本回退和新版本启动失败自动恢复。
 - 所有数据只在本机处理，本地服务仅监听 `127.0.0.1`。
 
-## v2.5.1 更新
+## v2.5.2 更新
 
 - 新增 `128 × 52` 贴边悬浮条：保留原天气背景和动态特效，只显示周额度、状态与 `Codex`。
 - 点击 `Codex` 可按“横版 → 竖版 → 悬浮条 → 横版”切换；横版或竖版拖到屏幕边缘也会自动吸附。
@@ -371,8 +371,8 @@ Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
 发布新版本时，先同步 `package.json` 与 `package-lock.json` 的版本号，再推送同名 Tag：
 
 ```powershell
-git tag -a v2.5.1 -m "Release v2.5.1"
-git push origin v2.5.1
+git tag -a v2.5.2 -m "Release v2.5.2"
+git push origin v2.5.2
 ```
 
 `.github/workflows/release.yml` 会完成跨平台打包、校验清单生成和 GitHub Release 发布。
