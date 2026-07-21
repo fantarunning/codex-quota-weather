@@ -20,18 +20,26 @@ A live Codex quota tray panel with five animated weather scenes for Windows and 
 - Follows Codex Desktop (`ChatGPT` / `ChatGPT.exe`) and Codex CLI (`Codex` / `Codex.exe`).
 - Accepts `/quota` directly in Codex: start the app when it is not running, or show/hide the panel when it is running.
 - Supports Windows 10/11, Apple Silicon Macs, and Intel Macs.
-- Supports a landscape card, a full-weather portrait card, a compact floating orb, pinning, resizing, Chinese/English, and reduced motion. The portrait design uses a `240 × 520` base layout and initially opens at `120 × 260` (one quarter of the base area).
-- Supports in-panel updates, tray-based version rollback, and automatic recovery from a failed update.
+- Supports a landscape card, a full-weather portrait card, an automatic edge-docked weekly-quota tab, pinning, resizing, Chinese/English, and reduced motion. Drag either card to the left or right display edge to dock it. The dock keeps the active weather background and animated effect, including automatic weather rotation. The portrait design uses a `240 × 520` base layout and initially opens at `120 × 260` (one quarter of the base area).
+- Supports in-panel updates and version rollback, plus automatic recovery from a failed update.
 - Processes data locally and binds its HTTP service only to `127.0.0.1`.
+
+## What's new in v2.5.0
+
+- Adds a `128 × 52` edge-docked HUD that keeps the active weather background and animation while showing only weekly quota, status, and `Codex`.
+- Clicking `Codex` cycles landscape → portrait → dock → landscape; dragging either card to a display edge also docks it automatically.
+- The dock ring changes weather, while the wheel or new vertical indicator changes backgrounds and keeps the active indicator synchronized.
+- The dock can move along the edge or be pulled inward and restored on release; long-press growth, post-layout scaling, and resize regressions are fixed.
+- Refines compact rain sizing, layout morphs, and rounded corners; the tray now includes Restart, while the minus button minimizes to the tray.
 
 ## One-command install
 
 ### Windows 10/11
 
-Run in Command Prompt (recommended and shorter; Windows 10/11 includes `curl.exe`):
+Run in Command Prompt (recommended; Windows 10/11 includes `curl.exe`):
 
 ```cmd
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 This downloads the lightweight [install.cmd](install.cmd) entry point, which calls the
@@ -39,6 +47,8 @@ full [install.ps1](install.ps1) installer. It does not permanently change the
 PowerShell execution policy. A first install normally takes 1–3 minutes; keep the CMD window open. The installer reports progress, waits for a successful local health check, and explicitly opens the panel. Starting with `v2.3.0`, this is a one-time install;
 later releases can be downloaded from the panel or tray. Existing users should run
 the command once more to migrate from the old single-version layout.
+
+Download failures are not hidden: the script runs only after it has been saved successfully. If GitHub Raw is unreachable, the connection times out, or TLS validation fails, Command Prompt reports the actual error instead of briefly showing a second Command Prompt banner and exiting.
 
 Or run in PowerShell:
 
@@ -72,8 +82,9 @@ You can review the [CMD entry point](install.cmd), [Windows installer](install.p
 
 ## In-panel updates and rollback
 
-- Click the download icon in the panel header to check, download, and restart into an update.
-- Open **Version & updates** from the tray/menu-bar icon to see download progress and version history.
+- The update entry exists only in the panel header and stays hidden when no newer release is available.
+- Click the download icon to check, download, skip, restart into an update, or browse version history.
+- Skipping a release hides its download icon until a newer version is published.
 - Each release is downloaded into its own directory, verified with the GitHub Release SHA-256 digest, and smoke-tested before it becomes selectable.
 - If the new version does not report a healthy renderer within 30 seconds, the stable launcher restores the previous version and configuration backup.
 - The latest five versions are retained. Installed releases switch immediately; older remote releases can be downloaded on demand.
@@ -83,7 +94,7 @@ You can review the [CMD entry point](install.cmd), [Windows installer](install.p
 CodexQuotaWeather/
 ├─ launcher/             stable startup entry point
 ├─ runtime/              private Node.js runtime
-├─ versions/2.3.0/       versioned app and Electron runtime
+├─ versions/<version>/   versioned app and Electron runtime
 ├─ downloads/            temporary downloads
 └─ state/update-state.json
 ```
@@ -99,7 +110,7 @@ Command Prompt window:
 ```cmd
 set HTTPS_PROXY=http://127.0.0.1:10808
 set HTTP_PROXY=http://127.0.0.1:10808
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 Replace `127.0.0.1:10808` with the local proxy address. These temporary variables
@@ -142,15 +153,22 @@ npm run setup:electron
 | Click the weather name | Change the current scene's background |
 | Click `中 / EN` | Switch language |
 | Click the download icon | Check/download updates, restart, or select a historical version |
-| Click the landscape “Codex Quota” title or `−` | Switch to portrait layout |
-| Click “Codex ●” in portrait layout | Switch to the orb; click the orb to return to landscape |
+| Click `Codex` in landscape, portrait, or the docked tab | Cycle through landscape → portrait → dock → landscape |
+| Drag landscape or portrait to the left/right display edge | Collapse into a weekly-quota tab while keeping the weather background and effect |
+| Click the docked ring | Switch to the next weather scene, matching the card interaction |
+| Scroll over the docked tab | Switch the active weather scene's background |
+| Click the vertical indicator on the dock's right side | Switch backgrounds and highlight the active one |
+| Click `Codex` in the docked tab | Return to landscape at its previous size |
+| Drag the docked tab vertically along the edge | Reposition it on the edge |
+| Pull the docked tab inward and release | The compact tab follows the cursor; the previous card returns after mouse release |
 | Click the portrait ring | Switch to the next weather scene, just like the landscape ring |
 | Click the bottom dots / scroll in portrait layout | Switch among the current weather's three backgrounds; the dots track the active image |
-| Drag portrait empty space or the orb | Move the compact window |
+| Drag portrait empty space | Move the portrait window |
 | Click the bell | Toggle always-on-top |
+| Click `−` | Minimize to the system tray, leaving only the tray icon |
 | Click `×` | Hide the panel but keep the tray app running |
 | Left-click the tray/menu bar icon | Show or hide the panel |
-| Right-click the tray/menu bar icon | Configure following, weather, update/rollback, or quit |
+| Right-click the tray/menu bar icon | Configure following or weather, or restart/quit the app |
 | `Ctrl + wheel` / drag an edge | Resize landscape or portrait; each layout remembers its own scale |
 
 ## What the numbers mean
@@ -208,7 +226,12 @@ See [SECURITY.md](SECURITY.md).
 
 ### The CMD installer appears to do nothing
 
-The first install downloads roughly 150 MB of Electron and normally takes 1–3 minutes. Keep the window open until it says `Installation finished successfully`. The current installer prints an immediate start message, verifies the local health endpoint before reporting success, and explicitly opens the panel. On failure, preserve the terminal output and inspect `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`. The default health check is `curl http://127.0.0.1:8787/health`.
+The first install downloads roughly 150 MB of Electron and normally takes 1–3 minutes. Keep the window open until it says `Installation finished successfully`. The current installer prints an immediate start message, verifies the local health endpoint before reporting success, and explicitly opens the panel.
+
+- If only a second Command Prompt banner appears before the original prompt returns, the old pipeline command did not download the script body and its `-s` flag hid the `curl` error. Copy the new one-command installer above; it saves the script first, runs it only after a successful download, and exposes network, proxy, and TLS errors.
+- Run `curl -fL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o NUL` to test GitHub Raw separately. A successful transfer reaches `100`; otherwise follow the reported error or configure a proxy.
+- On installer failure, preserve the terminal output and inspect `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`.
+- The default health check is `curl http://127.0.0.1:8787/health`.
 
 ### The panel does not appear after macOS installation
 
@@ -244,7 +267,7 @@ platform-specific installer. In Command Prompt:
 ```cmd
 set HTTPS_PROXY=http://127.0.0.1:10808
 set HTTP_PROXY=http://127.0.0.1:10808
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 ### Command Prompt cannot find `curl`
@@ -294,8 +317,8 @@ GitHub Actions repeats them on Windows x64, Apple Silicon macOS, and Intel macOS
 To publish, update the package version and push the matching annotated tag:
 
 ```powershell
-git tag -a v2.3.0 -m "Release v2.3.0"
-git push origin v2.3.0
+git tag -a v2.5.0 -m "Release v2.5.0"
+git push origin v2.5.0
 ```
 
 `.github/workflows/release.yml` builds the three archives, generates checksums,

@@ -14,15 +14,19 @@ contextBridge.exposeInMainWorld('quotaShell', {
   // then follows the OS cursor and resizes the window (aspect-locked).
   resizeStart: (edge) => ipcRenderer.send('quota:resize-start', edge),
   resizeEnd: () => ipcRenderer.send('quota:resize-end'),
-  // three-state view: card → mini → orb → card
+  // The title cycles card -> portrait -> dock -> card. Dragging a card to a
+  // display edge also docks it; pulling the dock inward restores the prior card.
   cycleView: () => ipcRenderer.send('quota:cycle-view'),
   setView: (mode) => ipcRenderer.send('quota:set-view', mode),
-  // minimize to floating orb / restore to card (legacy, still used)
+  // Minimize hides the panel completely; the tray icon remains available.
   minimize: () => ipcRenderer.send('quota:minimize'),
   restore: () => ipcRenderer.send('quota:restore'),
-  onView: (cb) => ipcRenderer.on('quota:view', (_e, v) => cb(v)),
-  orbDragStart: () => ipcRenderer.send('quota:orb-drag-start'),
-  orbDragEnd: () => ipcRenderer.send('quota:orb-drag-end'),
+  onView: (cb) => ipcRenderer.on('quota:view', (_e, v, meta) => cb(v, meta)),
+  compactDragStart: () => ipcRenderer.send('quota:compact-drag-start'),
+  compactDragEnd: () => ipcRenderer.send('quota:compact-drag-end'),
+  dockDragStart: (point) => ipcRenderer.send('quota:dock-drag-start', point),
+  dockDragMove: (point) => ipcRenderer.send('quota:dock-drag-move', point),
+  dockDragEnd: (result) => ipcRenderer.send('quota:dock-drag-end', result),
   onNextWeather: (cb) => ipcRenderer.on('quota:next-weather', () => cb()),
   weatherInteracted: () => ipcRenderer.send('quota:weather-interaction'),
   getUpdateStatus: () => ipcRenderer.invoke('quota:get-update-status'),

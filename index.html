@@ -28,60 +28,167 @@
         .rz-sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
         /* ...except interactive controls, which opt out below. */
 
-        /* ===== three view modes: card (default) / mini (vertical) / orb ===== */
-        /* By default only the card shows. body.view-mini / body.view-orb switch. */
-        #orb, #mini { display: none; }
+        /* ===== card / portrait / edge-docked weekly quota ===== */
+        #edge-dock, #mini { display: none; }
         body.view-card #quota-app-container { display: block; }
-        body.view-card #orb, body.view-card #mini { display: none; }
-        body.view-mini #orb { display: none; }
+        body.view-card #edge-dock, body.view-card #mini { display: none; }
+        body.view-mini #edge-dock { display: none; }
         body.view-mini #quota-app-container {
             display: block; position: fixed; inset: 0; width: auto; height: auto; z-index: 0;
             border-radius: 30px; opacity: 1; animation: none;
         }
         body.view-mini #quota-app-container .content { display: none; }
         body.view-mini #mini { display: flex; }
-        body.view-orb #quota-app-container, body.view-orb #mini, body.view-orb .rz { display: none; }
-        body.view-orb #orb { display: flex; }
+        body.view-dock #mini, body.view-dock .rz { display: none; }
+        body.view-dock #quota-app-container {
+            display: block; position: fixed; inset: 0; width: auto; height: auto; z-index: 0;
+            opacity: 1; animation: none; box-shadow: none;
+        }
+        body.view-dock #quota-app-container .content { display: none; }
+        body.view-dock #quota-app-container .overlay { opacity: 0.18; }
+        body.view-dock #edge-dock { display: flex; }
 
-        /* ---- crystal ball: a glass sphere with colored quicksand-like liquid ---- */
-        #orb {
-            position: fixed; inset: 4px;
-            align-items: center; justify-content: center;
-            border-radius: 50%; cursor: grab; -webkit-app-region: no-drag;
-            overflow: hidden; user-select: none; color: #fff;
-            background: radial-gradient(circle at 34% 28%, rgba(255,255,255,0.35), rgba(255,255,255,0.05) 38%, rgba(10,20,40,0.55) 100%);
-            box-shadow: 0 8px 26px rgba(0,0,0,0.55), inset 0 2px 6px rgba(255,255,255,0.55), inset 0 -10px 24px rgba(0,0,0,0.5);
+        /* Side HUD: the reference's ring/status hierarchy sits on top of this
+           app's live weather scene instead of replacing it with a static skin. */
+        #edge-dock {
+            position: fixed; inset: 0; z-index: 20; box-sizing: border-box;
+            align-items: center; justify-content: flex-start; flex-direction: row;
+            padding: 10px 15px 10px 10px;
+            cursor: grab; -webkit-app-region: no-drag; user-select: none; touch-action: none; color: #fff;
+            overflow: hidden;
+            background: rgba(8,18,34,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+            box-shadow: -15px 0 40px rgba(0,0,0,0.60), inset 1px 1px 20px rgba(255,255,255,0.03), inset -10px 0 30px rgba(0,0,0,0.40);
+            transition: background 0.4s cubic-bezier(0.2,0.8,0.2,1), border-color 0.4s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.4s cubic-bezier(0.2,0.8,0.2,1);
         }
-        #orb:active { cursor: grabbing; }
-        /* the liquid fill — height set by JS from remaining %, color by level */
-        #orb-liquid {
-            position: absolute; left: -25%; right: -25%; bottom: 0; height: 50%;
-            background: var(--liquid, #38bdf8);
-            transition: height 1.1s cubic-bezier(0.4,0,0.2,1), background 0.9s ease;
-            filter: saturate(1.15);
+        #edge-dock:active { cursor: grabbing; }
+        #edge-dock:hover {
+            background: rgba(8,18,34,0.11);
+            box-shadow: -20px 0 50px rgba(0,0,0,0.80), inset 1px 1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), 0 0 30px color-mix(in srgb, var(--dock-accent, #60a5fa) 15%, transparent);
         }
-        /* two wobbling wave crests riding on top of the liquid */
-        #orb-liquid::before, #orb-liquid::after {
-            content: ''; position: absolute; left: 0; right: 0; top: -18px; height: 36px;
-            border-radius: 42%;
-            background: inherit;
+        #edge-dock::before {
+            content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background:
+                radial-gradient(circle at 52% 48%, rgba(128,160,220,0.04), transparent 52%),
+                linear-gradient(90deg, rgba(2,6,23,0.05), rgba(15,23,42,0.03));
+            box-shadow: inset 0 1px 10px rgba(255,255,255,0.05);
         }
-        #orb-liquid::before { animation: orbWave 3.6s linear infinite; opacity: 0.85; }
-        #orb-liquid::after  { animation: orbWave 5.2s linear infinite reverse; opacity: 0.55; }
-        @keyframes orbWave {
-            from { transform: translateX(-12%) rotate(0deg); }
-            to   { transform: translateX(-12%) rotate(360deg); }
+        body.view-dock[data-dock-side="right"] #edge-dock,
+        body.view-dock[data-dock-side="right"] #quota-app-container { border-radius: 10px 0 0 10px; border-right: 0; }
+        body.view-dock[data-dock-side="left"] #edge-dock,
+        body.view-dock[data-dock-side="left"] #quota-app-container { border-radius: 0 10px 10px 0; border-left: 0; }
+        body.view-dock[data-dock-side="right"] #edge-dock { border-right: 0; border-left-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent); }
+        body.view-dock[data-dock-side="right"] #edge-dock:hover { border-left-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent); }
+        body.view-dock[data-dock-side="left"] #edge-dock {
+            padding: 10px 10px 10px 15px; border-left: 0;
+            border-right-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent);
+            box-shadow: 15px 0 40px rgba(0,0,0,0.60), inset -1px 1px 20px rgba(255,255,255,0.03), inset 10px 0 30px rgba(0,0,0,0.40);
         }
-        /* drifting shimmer specks in the liquid (quicksand glints) */
-        #orb-specks { position: absolute; inset: 0; pointer-events: none; opacity: 0.7; }
-        /* glass highlight on top of everything */
-        #orb-glass {
-            position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-            background: radial-gradient(circle at 32% 24%, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 22%);
+        body.view-dock[data-dock-side="left"] #edge-dock:hover { border-right-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent); }
+        body.view-dock.dock-detached #edge-dock,
+        body.view-dock.dock-detached #quota-app-container {
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
         }
-        #orb-pct {
-            position: relative; z-index: 3; font-size: 30px; font-weight: 800;
-            font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+        #edge-dock::after {
+            content: ''; position: absolute; top: 18px; bottom: 18px; width: 3px; z-index: 4;
+            border-radius: 0 2px 2px 0; background: var(--dock-accent, #60a5fa);
+            box-shadow: 0 0 8px color-mix(in srgb, var(--dock-accent, #60a5fa) 60%, transparent), 0 0 15px color-mix(in srgb, var(--dock-accent, #60a5fa) 60%, transparent); opacity: 0.9;
+            transition: top 0.3s ease, bottom 0.3s ease, background 0.3s ease;
+            animation: dockAccentBreath 2.6s ease-in-out infinite;
+        }
+        #edge-dock:hover::after { top: 13px; bottom: 13px; }
+        body.view-dock[data-dock-side="right"] #edge-dock::after { left: 0; }
+        body.view-dock[data-dock-side="left"] #edge-dock::after { right: 0; border-radius: 2px 0 0 2px; }
+        @keyframes dockAccentBreath {
+            0%, 100% { opacity: 0.68; box-shadow: 0 0 6px var(--dock-accent, #60a5fa); }
+            50% { opacity: 1; box-shadow: 0 0 12px var(--dock-accent, #60a5fa); }
+        }
+        .dock-hud-content { position: relative; z-index: 3; display: flex; align-items: center; gap: 6px; margin-left: 3px; }
+        .dock-ring-shell {
+            width: 34px; height: 34px; flex: 0 0 34px; position: relative;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; -webkit-app-region: no-drag;
+        }
+        .dock-ring { width: 100%; height: 100%; overflow: visible; transform: rotate(-90deg); }
+        .dock-ring-track, .dock-ring-progress { fill: none; cx: 16px; cy: 16px; r: 13px; }
+        .dock-ring-track { stroke: rgba(255,255,255,0.13); stroke-width: 2.3; }
+        .dock-ring-progress {
+            stroke: var(--dock-accent, #60a5fa); stroke-width: 2.3; stroke-linecap: round;
+            stroke-dasharray: 81.68; stroke-dashoffset: 81.68;
+            filter: drop-shadow(0 0 3px color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent));
+            transition: stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1), stroke 0.45s ease;
+        }
+        #dock-pct {
+            position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+            padding-top: 1px; box-sizing: border-box;
+            font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+            font-size: 12px; line-height: 1; font-weight: 700; letter-spacing: -0.35px;
+            color: rgba(219,234,254,0.96); font-variant-numeric: tabular-nums;
+            text-shadow: 0 0 8px color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent);
+        }
+        .dock-brand {
+            display: flex; align-items: center; gap: 4px; padding-right: 5px; white-space: nowrap;
+            font-family: 'Segoe UI Variable Display', 'Avenir Next', sans-serif;
+            font-size: 11px; line-height: 1; font-weight: 800; letter-spacing: 0.6px;
+            color: rgba(255,255,255,0.90);
+            text-shadow: 0 0 6px rgba(255,255,255,0.60);
+            cursor: pointer; -webkit-app-region: no-drag;
+        }
+        .dock-ring-shell:focus-visible, .dock-brand:focus-visible {
+            outline: 1px solid color-mix(in srgb, var(--dock-accent, #60a5fa) 75%, white);
+            outline-offset: 1px;
+        }
+        #dock-live-dot {
+            display: block; width: 5px; height: 5px; border-radius: 50%; flex: 0 0 5px;
+            background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.95);
+            animation: pulse 2s infinite;
+        }
+        #dock-live-dot.offline { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.9); animation: none; }
+        #dock-bg-switcher {
+            position: absolute; right: 3px; top: 50%; z-index: 5;
+            width: 10px; height: 34px; padding: 4px 2px; box-sizing: border-box;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+            transform: translateY(-50%); border-radius: 999px; opacity: 0.58;
+            cursor: pointer; touch-action: none;
+            transition: opacity 0.2s ease, background 0.2s ease;
+        }
+        #dock-bg-switcher:hover, #dock-bg-switcher:focus-visible {
+            opacity: 1; background: rgba(255,255,255,0.09); outline: none;
+        }
+        #dock-bg-switcher span {
+            width: 3px; height: 3px; flex: 0 0 3px; border-radius: 50%;
+            background: rgba(255,255,255,0.34);
+            transition: height 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+        }
+        #dock-bg-switcher span.active {
+            height: 10px; flex-basis: 10px; border-radius: 999px;
+            background: rgba(255,255,255,0.88); box-shadow: 0 0 5px rgba(255,255,255,0.34);
+        }
+
+        /* Window bounds morph in the main process. This short renderer reveal
+           masks reflow while keeping the weather scene continuous underneath. */
+        body.layout-transition.view-card #quota-app-container,
+        body.layout-transition.view-mini #quota-app-container,
+        body.layout-transition.view-mini #mini,
+        body.layout-transition.view-dock #quota-app-container,
+        body.layout-transition.view-dock #edge-dock {
+            animation: layoutSurfaceReveal 0.3s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        @keyframes layoutSurfaceReveal {
+            0% { opacity: 0.35; filter: blur(1.5px) brightness(0.82); }
+            55% { opacity: 0.86; filter: blur(0.25px) brightness(1.04); }
+            100% { opacity: 1; filter: blur(0) brightness(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            body.layout-transition.view-card #quota-app-container,
+            body.layout-transition.view-mini #quota-app-container,
+            body.layout-transition.view-mini #mini,
+            body.layout-transition.view-dock #quota-app-container,
+            body.layout-transition.view-dock #edge-dock { animation-duration: 0.01ms; }
+            #edge-dock::after, #dock-live-dot { animation: none; }
         }
 
         /* ---- portrait mini card — the full weather scene remains underneath ---- */
@@ -172,6 +279,9 @@
                 radial-gradient(circle at 70% 44%, rgba(72, 139, 154, 0.05) 0%, rgba(7, 22, 31, 0.56) 78%),
                 linear-gradient(108deg, rgba(5, 17, 26, 0.86) 0%, rgba(16, 55, 66, 0.28) 54%, rgba(6, 20, 28, 0.66) 100%);
         }
+        body.view-dock #quota-app-container .bg-layer {
+            filter: brightness(0.84) saturate(1.08) contrast(1.14);
+        }
 
         @keyframes fadeAppIn { to { opacity: 1; } }
 
@@ -183,7 +293,6 @@
             mix-blend-mode: normal;
             filter: none;
         }
-
         .content { position: absolute; inset: 0; z-index: 10; padding: 30px 40px; display: flex; flex-direction: column; user-select: none; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
 
@@ -286,7 +395,7 @@
         .update-version button:hover { background: rgba(255,255,255,0.22); }
         /* interactive controls must opt out of the body drag region, or the drag
            swallows their clicks. */
-        .win-btn, #win-controls, #btn-lang, #click-zone, #ring-mode-label, #bg-changer, .theme-pill, #update-popover, .layout-switch, #mini .mini-top, #mini .mini-ring, #mini-bg-switcher { -webkit-app-region: no-drag; }
+        .win-btn, #win-controls, #btn-lang, #click-zone, #ring-mode-label, #bg-changer, .theme-pill, #update-popover, .layout-switch, #mini .mini-top, #mini .mini-ring, #mini-bg-switcher, #dock-bg-switcher { -webkit-app-region: no-drag; }
     </style>
 </head>
 <body class="view-card">
@@ -335,18 +444,25 @@
         </div>
     </div>
 
-    <!-- ==== CRYSTAL BALL — shown in 'orb' view ==== -->
-    <!-- a glass sphere whose liquid/quicksand level = remaining quota, tinted by amount -->
-    <div id="orb" onmousedown="compactDown(event)">
-        <div id="orb-glass">
-            <div id="orb-liquid">
-                <div class="orb-wave orb-wave-a"></div>
-                <div class="orb-wave orb-wave-b"></div>
+    <!-- ==== EDGE-DOCKED WEEKLY QUOTA — entered by dragging a card to an edge ==== -->
+    <div id="edge-dock" role="group" aria-label="Codex quota"
+         onpointerdown="dockDown(event)">
+        <div class="dock-hud-content">
+            <div class="dock-ring-shell" role="button" tabindex="0" aria-label="Switch weather"
+                 onclick="dockToggleWeather(event)" onkeydown="dockWeatherKey(event)">
+                <svg class="dock-ring" viewBox="0 0 32 32" aria-hidden="true">
+                    <circle class="dock-ring-track" cx="16" cy="16" r="13"></circle>
+                    <circle id="dock-ring-fg" class="dock-ring-progress" cx="16" cy="16" r="13"></circle>
+                </svg>
+                <strong id="dock-pct"><span id="dock-pct-value">--</span></strong>
             </div>
-            <div id="orb-sparkles"></div>
-            <div id="orb-glare"></div>
+            <span class="dock-brand" role="button" tabindex="0" aria-label="Switch layout"
+                  onclick="dockToggleLayout(event)" onkeydown="dockLayoutKey(event)">Codex <i id="dock-live-dot"></i></span>
         </div>
-        <div id="orb-pct">--</div>
+        <div id="dock-bg-switcher" role="button" tabindex="0" aria-label="Switch background"
+             onclick="changeBgInTheme(event)" onpointerdown="event.stopPropagation()" onkeydown="miniBackgroundKey(event)">
+            <span></span><span></span><span></span>
+        </div>
     </div>
 
     <div id="quota-app-container">
@@ -383,7 +499,7 @@
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
                             <span id="update-dot"></span><span id="update-progress"></span>
                         </button>
-                        <button id="btn-min" class="win-btn" onclick="shellMinimize(event)" title="切换到竖版小窗 / Switch to portrait view" aria-label="Switch to portrait view">
+                        <button id="btn-min" class="win-btn" onclick="shellMinimize(event)" title="最小化到托盘 / Minimize to tray" aria-label="Minimize to tray">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
                         <button id="btn-pin" class="win-btn" onclick="shellTogglePin(event)" title="固定在最前 / 取消固定" aria-label="Toggle always on top">
@@ -504,7 +620,8 @@
 
         function syncWeatherViewport(mode) {
             const target = mode === 'mini' ? { width: 240, height: 520 }
-                : (mode === 'card' ? { width: 680, height: 380 } : null);
+                : (mode === 'dock' ? { width: 128, height: 52 }
+                    : (mode === 'card' ? { width: 680, height: 380 } : null));
             if (!target || (width === target.width && height === target.height)) return;
             width = target.width;
             height = target.height;
@@ -547,7 +664,8 @@
                 plan_plus: 'Plus 套餐', plan_pro: 'Pro 套餐', plan_team: 'Team 套餐', plan_free: '免费版', plan_unknown: '未知套餐',
                 tip_ring: '周额度（来自 ChatGPT 账户）', tip_weather: '点击圆环：切换天气',
                 tip_bg: '点击更换该天气的背景图', tip_lang: '中文 / English',
-                tip_layout: '点击切换横版 / 竖版 / 悬浮球', tip_mini: '点击圆环切换天气；点击下方圆点或滚轮切换背景',
+                tip_layout: '点击切换横版 / 竖版 / 悬浮条', tip_mini: '点击圆环切换天气；点击下方圆点或滚轮切换背景',
+                tip_minimize: '最小化到托盘', tip_dock: '圆环切天气，滚轮换背景，Codex 切版式；向内拖出还原卡片',
                 tip_pin_on: '已置顶（点击取消）', tip_pin_off: '点击置顶', tip_close: '隐藏浮窗（托盘图标可重开）',
                 age_prefix: '更新于 ', age_now: '刚刚', age_min: ' 分钟前', age_hr: ' 小时前', age_day: ' 天前', live_badge: '● 实时', refreshing: '刷新中…',
                 update_title: '版本与更新', update_reading: '正在读取版本信息…', update_check: '检查更新',
@@ -566,7 +684,8 @@
                 plan_plus: 'Plus plan', plan_pro: 'Pro plan', plan_team: 'Team plan', plan_free: 'Free', plan_unknown: 'Unknown plan',
                 tip_ring: 'Account weekly quota (from ChatGPT account)', tip_weather: 'Click ring: switch weather',
                 tip_bg: 'Click to change this weather\'s background', tip_lang: '中文 / English',
-                tip_layout: 'Switch card / portrait / orb', tip_mini: 'Click the ring to change weather; click the bottom dots or scroll to change background',
+                tip_layout: 'Switch landscape / portrait / dock', tip_mini: 'Click the ring to change weather; click the bottom dots or scroll to change background',
+                tip_minimize: 'Minimize to tray', tip_dock: 'Ring: weather; wheel: background; Codex: layout; pull inward to restore',
                 tip_pin_on: 'Pinned (click to unpin)', tip_pin_off: 'Click to pin on top', tip_close: 'Hide panel (reopen from tray)',
                 age_prefix: 'updated ', age_now: 'just now', age_min: 'm ago', age_hr: 'h ago', age_day: 'd ago', live_badge: '● LIVE', refreshing: 'refreshing…',
                 update_title: 'Version & updates', update_reading: 'Reading version information…', update_check: 'Check for updates',
@@ -602,10 +721,13 @@
             setTip('ring-mode-label', 'tip_ring');
             setTip('click-zone', 'tip_weather');
             setTip('btn-lang', 'tip_lang');
+            setTip('btn-min', 'tip_minimize');
             setTip('btn-close', 'tip_close');
             setTip('btn-update', 'update_title');
             setTip('mini', 'tip_mini');
             setTip('mini-bg-switcher', 'tip_bg');
+            setTip('dock-bg-switcher', 'tip_bg');
+            setTip('edge-dock', 'tip_dock');
             const miniBgSwitcher = document.getElementById('mini-bg-switcher');
             if (miniBgSwitcher) miniBgSwitcher.setAttribute('aria-label', t('tip_bg'));
             document.querySelectorAll('.layout-switch, #mini .mini-top').forEach((el) => { el.title = t('tip_layout'); });
@@ -712,8 +834,10 @@
             const dot = document.getElementById('live-dot');
             const txt = document.getElementById('live-text');
             const miniDot = document.getElementById('mini-live-dot');
+            const dockDot = document.getElementById('dock-live-dot');
             if (!dot) return;
             if (miniDot) miniDot.classList.toggle('offline', !ok);
+            if (dockDot) dockDot.classList.toggle('offline', !ok);
             if (ok) {
                 dot.style.background = '#4ADE80'; dot.style.boxShadow = '0 0 12px #4ADE80';
                 dot.style.animation = 'pulse 2s infinite'; txt.innerText = t('live');
@@ -815,33 +939,22 @@
             document.getElementById('val-reset').innerText = (d.sessionsToday != null ? d.sessionsToday : '—');
 
             renderRingForMode();
-            updateOrb(d);
+            updateCompactViews(d);
             setConnState(true);
         }
 
-        // Compact views (crystal-ball orb + vertical mini card). Both show the
-        // account-weekly remaining %. The orb's liquid level = remaining %, tinted
-        // green(high)/amber(mid)/red(low); the portrait card mirrors the weekly
-        // ring plus the two vertically stacked metrics from the reference layout.
-        function liquidColor(pct) {
-            if (pct <= 15) return '#f87171';   // low → red
-            if (pct <= 40) return '#fbbf24';   // mid → amber
-            return '#34d399';                  // high → green
-        }
-        function updateOrb(d) {
+        // Compact views share the live weekly percentage. The portrait keeps its
+        // full ring and daily metrics; the edge dock intentionally shows only the
+        // weekly quota so it stays quiet and readable at the screen edge.
+        function updateCompactViews(d) {
             const pr = d.plan && d.plan.primary;
             const pct = Math.round(pr ? pr.remainingPct : (d.context ? d.context.remainingPct : 100));
-            const color = liquidColor(pct);
-
-            // --- crystal ball ---
-            const pctEl = document.getElementById('orb-pct');
-            const liquid = document.getElementById('orb-liquid');
-            if (pctEl) pctEl.innerText = pct + '%';
-            if (liquid) {
-                liquid.style.height = Math.max(6, Math.min(100, pct)) + '%';
-                liquid.style.setProperty('--liquid', color);
-                liquid.style.background = color;
-            }
+            const dock = document.getElementById('edge-dock');
+            const dockRing = document.getElementById('dock-ring-fg');
+            const dockAccent = pct <= 10 ? '#F87171' : '#60A5FA';
+            animateDockPercentage(pct);
+            if (dock) dock.style.setProperty('--dock-accent', dockAccent);
+            if (dockRing) dockRing.style.strokeDashoffset = 81.68 * (1 - pct / 100);
 
             // --- vertical mini card ---
             const mp = document.getElementById('mini-pct');
@@ -861,12 +974,136 @@
             if (mc) mc.innerText = fmtInt(d.callsToday);
         }
 
+        let dockDisplayedPct = 0;
+        let dockTargetPct = null;
+        let dockPctAnimation = 0;
+        function animateDockPercentage(target) {
+            const el = document.getElementById('dock-pct-value');
+            if (!el) return;
+            target = Math.max(0, Math.min(100, Math.round(Number(target) || 0)));
+            if (dockTargetPct === target && dockPctAnimation) return;
+            cancelAnimationFrame(dockPctAnimation);
+            dockTargetPct = target;
+            const from = dockDisplayedPct;
+            if (reduceMotion || from === target) {
+                dockDisplayedPct = target;
+                el.textContent = String(target);
+                dockPctAnimation = 0;
+                return;
+            }
+            const startedAt = performance.now();
+            const duration = 1500;
+            const step = (now) => {
+                const progress = Math.min(1, (now - startedAt) / duration);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                dockDisplayedPct = from + (target - from) * eased;
+                el.textContent = String(Math.round(dockDisplayedPct));
+                if (progress < 1) dockPctAnimation = requestAnimationFrame(step);
+                else {
+                    dockDisplayedPct = target;
+                    el.textContent = String(target);
+                    dockPctAnimation = 0;
+                }
+            };
+            dockPctAnimation = requestAnimationFrame(step);
+        }
+
         // ---- Electron shell integration -----------------------------------
         const SHELL = window.quotaShell || null;
         let pinned = true;
+        let layoutTransitionTimer = null;
+        let dockDragStartPoint = null;
+        let dockDragged = false;
+        let dockPullOutReady = false;
+        let suppressDockClickUntil = 0;
         function shellClose(e) { if (e) e.stopPropagation(); if (SHELL) SHELL.close(); }
-        function shellMinimize(e) { if (e) e.stopPropagation(); if (SHELL && SHELL.cycleView) SHELL.cycleView(); }
+        function shellMinimize(e) { if (e) e.stopPropagation(); if (SHELL && SHELL.minimize) SHELL.minimize(); }
         function cycleLayout(e) { if (e) e.stopPropagation(); if (SHELL && SHELL.cycleView) SHELL.cycleView(); }
+        function dockInteractionBlocked(e) {
+            if (e) e.stopPropagation();
+            return Date.now() < suppressDockClickUntil;
+        }
+        function dockToggleWeather(e) {
+            if (dockInteractionBlocked(e)) return;
+            toggleWeather();
+        }
+        function dockToggleLayout(e) {
+            if (dockInteractionBlocked(e)) return;
+            if (SHELL && SHELL.cycleView) SHELL.cycleView();
+        }
+        function dockDown(e) {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            dockDragStartPoint = { x: e.screenX, y: e.screenY };
+            dockDragged = false;
+            dockPullOutReady = false;
+            const target = e.currentTarget;
+            const activationTarget = e.target && e.target.closest
+                ? (e.target.closest('.dock-ring-shell') ? 'weather'
+                    : (e.target.closest('.dock-brand') ? 'layout' : null))
+                : null;
+            try {
+                if (target.setPointerCapture) target.setPointerCapture(e.pointerId);
+            } catch (_) { /* synthetic tests and older Chromium may reject capture */ }
+            if (SHELL && SHELL.dockDragStart) SHELL.dockDragStart({ x: e.screenX, y: e.screenY });
+            const move = (ev) => {
+                if (!dockDragStartPoint) return;
+                if (Math.hypot(ev.screenX - dockDragStartPoint.x, ev.screenY - dockDragStartPoint.y) >= 3) dockDragged = true;
+                const side = document.body.dataset.dockSide === 'left' ? 'left' : 'right';
+                const horizontalDistance = side === 'left'
+                    ? ev.screenX - dockDragStartPoint.x
+                    : dockDragStartPoint.x - ev.screenX;
+                dockPullOutReady = horizontalDistance >= 18;
+                document.body.classList.toggle('dock-detached', dockPullOutReady);
+                if (SHELL && SHELL.dockDragMove) SHELL.dockDragMove({ x: ev.screenX, y: ev.screenY });
+            };
+            const finish = (ev) => {
+                if (!dockDragStartPoint) return;
+                const cancelled = ev.type === 'pointercancel';
+                if (!cancelled) move(ev);
+                if (SHELL && SHELL.dockDragEnd) {
+                    SHELL.dockDragEnd({
+                        pullOut: !cancelled && dockPullOutReady,
+                        cancelled,
+                        point: cancelled
+                            ? { x: dockDragStartPoint.x, y: dockDragStartPoint.y }
+                            : { x: ev.screenX, y: ev.screenY }
+                    });
+                }
+                if (cancelled || dockDragged) {
+                    suppressDockClickUntil = Date.now() + 220;
+                } else if (activationTarget) {
+                    // Pointer capture retargets the following native click to
+                    // the dock shell. Activate the original control here, then
+                    // suppress that compatibility click to avoid a double fire.
+                    suppressDockClickUntil = Date.now() + 220;
+                    if (activationTarget === 'weather') toggleWeather();
+                    else if (SHELL && SHELL.cycleView) SHELL.cycleView();
+                }
+                dockDragStartPoint = null;
+                if (!dockPullOutReady) document.body.classList.remove('dock-detached');
+                dockPullOutReady = false;
+                target.removeEventListener('pointermove', move);
+                target.removeEventListener('pointerup', finish);
+                target.removeEventListener('pointercancel', finish);
+                if (target.releasePointerCapture && target.hasPointerCapture && target.hasPointerCapture(ev.pointerId)) {
+                    target.releasePointerCapture(ev.pointerId);
+                }
+            };
+            target.addEventListener('pointermove', move);
+            target.addEventListener('pointerup', finish);
+            target.addEventListener('pointercancel', finish);
+        }
+        function dockWeatherKey(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            dockToggleWeather(e);
+        }
+        function dockLayoutKey(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            dockToggleLayout(e);
+        }
         function miniToggleWeather(e) { if (e) e.stopPropagation(); toggleWeather(); }
         function miniBackgroundKey(e) {
             if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -876,36 +1113,35 @@
             if (e) e.stopPropagation();
             if (SHELL) SHELL.togglePin();
         }
-        // Compact views drag to move. Only a plain orb click cycles back to card;
-        // portrait layout switching is intentionally limited to its Codex title.
-        let compactMoved = false;
+        // Portrait empty space drags the window; reaching a display edge lets the
+        // main process convert it into the edge-docked quota tab.
         function compactDown(e) {
             if (e.button !== 0) return;
             // Interactive portrait controls stop propagation before this handler.
             e.preventDefault();
-            compactMoved = false;
-            const sx = e.screenX, sy = e.screenY;
-            if (SHELL && SHELL.orbDragStart) SHELL.orbDragStart();
-            const move = (ev) => {
-                if (Math.abs(ev.screenX - sx) > 3 || Math.abs(ev.screenY - sy) > 3) compactMoved = true;
-            };
+            if (SHELL && SHELL.compactDragStart) SHELL.compactDragStart();
             const up = () => {
-                if (SHELL && SHELL.orbDragEnd) SHELL.orbDragEnd();
-                window.removeEventListener('mousemove', move);
+                if (SHELL && SHELL.compactDragEnd) SHELL.compactDragEnd();
                 window.removeEventListener('mouseup', up);
-                // The orb itself remains the large click target for returning to card.
-                if (!compactMoved && document.body.classList.contains('view-orb') && SHELL && SHELL.cycleView) SHELL.cycleView();
             };
-            window.addEventListener('mousemove', move);
             window.addEventListener('mouseup', up);
         }
-        // main tells us which of the three views to paint
-        function setView(v) {
-            const mode = (v === 'orb' || v === 'mini') ? v : 'card';
-            document.body.classList.remove('view-card', 'view-mini', 'view-orb');
+        // Main tells us which view to paint and which edge the dock is attached to.
+        function setView(v, meta) {
+            const mode = (v === 'dock' || v === 'mini') ? v : 'card';
+            clearTimeout(layoutTransitionTimer);
+            document.body.classList.remove('layout-transition');
+            document.body.classList.remove('dock-detached');
+            document.body.classList.remove('view-card', 'view-mini', 'view-dock');
             document.body.classList.add('view-' + mode);
+            if (meta && (meta.side === 'left' || meta.side === 'right')) document.body.dataset.dockSide = meta.side;
             syncWeatherViewport(mode);
-            if (lastData) { updateOrb(lastData); }
+            if (lastData) { updateCompactViews(lastData); }
+            // Restart the reveal animation even when layout switches happen in
+            // quick succession; the main process animates the actual bounds.
+            void document.body.offsetWidth;
+            document.body.classList.add('layout-transition');
+            layoutTransitionTimer = setTimeout(() => document.body.classList.remove('layout-transition'), 340);
         }
         if (SHELL && SHELL.onView) SHELL.onView(setView);
         function reflectPin(on) {
@@ -1098,12 +1334,13 @@
 
         }
 
-        let miniWheelAt = 0;
+        let compactBackgroundWheelAt = 0;
         window.addEventListener('wheel', (ev) => {
-            if (document.body.classList.contains('view-mini') && !ev.ctrlKey && !ev.metaKey) {
+            const compactBackgroundView = document.body.classList.contains('view-mini') || document.body.classList.contains('view-dock');
+            if (compactBackgroundView && !ev.ctrlKey && !ev.metaKey) {
                 ev.preventDefault();
-                if (Math.abs(ev.deltaY) < 4 || Date.now() - miniWheelAt < 360) return;
-                miniWheelAt = Date.now();
+                if (Math.abs(ev.deltaY) < 4 || Date.now() - compactBackgroundWheelAt < 360) return;
+                compactBackgroundWheelAt = Date.now();
                 changeBgInTheme(ev, ev.deltaY < 0 ? -1 : 1);
                 return;
             }
@@ -1173,8 +1410,10 @@
 
         function updateMiniBackgroundDots() {
             const active = bgIndices[currentIdx] || 0;
-            document.querySelectorAll('.mini-mode-dots span').forEach((dot, index) => {
-                dot.classList.toggle('active', index === active);
+            document.querySelectorAll('.mini-mode-dots, #dock-bg-switcher').forEach((switcher) => {
+                switcher.querySelectorAll('span').forEach((dot, index) => {
+                    dot.classList.toggle('active', index === active);
+                });
             });
         }
 
@@ -1207,7 +1446,7 @@
             updateMiniBackgroundDots();
             appContainer.dataset.theme = th.id;
             resetParticles();
-            if (lastData) updateOrb(lastData);
+            if (lastData) updateCompactViews(lastData);
             nameEl.innerText = th.name;
             nameEl.className = 'name-in';
             document.getElementById('progress-ring').style.stroke = th.color;
@@ -1286,14 +1525,18 @@
         function resetParticles() {
             particles = []; activeLightnings = []; ripples = [];
             const mode = themes[currentIdx].id;
+            const docked = document.body.classList.contains('view-dock');
 
             if (mode === 'rain') {
-                for(let i=0; i<75; i++) {
+                const count = docked ? 8 : 75;
+                const rainScale = docked ? 0.62 : 1;
+                for(let i=0; i<count; i++) {
                     let depth = Math.random();
-                    particles.push({ x: Math.random()*width, y: Math.random()*height - height, r: depth * 1.2 + 0.6, l: (depth * 1.2 + 0.6) * 5, s: depth * 1.5 + 0.4 });
+                    const radius = (depth * 1.2 + 0.6) * rainScale;
+                    particles.push({ x: Math.random()*width, y: Math.random()*height - height, r: radius, l: radius * 5, s: (depth * 1.5 + 0.4) * rainScale });
                 }
             } else if (mode === 'snow') {
-                const count = reduceMotion ? 38 : 112;
+                const count = docked ? (reduceMotion ? 10 : 24) : (reduceMotion ? 38 : 112);
                 for(let i=0; i<count; i++) {
                     const depth = Math.pow(Math.random(), 0.82);
                     particles.push({
@@ -1318,7 +1561,7 @@
                     [246, 194, 216],
                     [255, 235, 241]
                 ];
-                const count = reduceMotion ? 24 : 72;
+                const count = docked ? (reduceMotion ? 7 : 16) : (reduceMotion ? 24 : 72);
                 for(let i=0; i<count; i++) {
                     const depth = Math.pow(Math.random(), 0.78);
                     particles.push({
@@ -1340,10 +1583,11 @@
                     });
                 }
             } else if (mode === 'meteor') {
-                for(let i=0; i<120; i++) particles.push({ x: Math.random()*width, y: Math.random()*height, r: Math.random()*1.5, phase: Math.random() * Math.PI * 2, speed: Math.random()*0.015 + 0.01 });
+                const count = docked ? 28 : 120;
+                for(let i=0; i<count; i++) particles.push({ x: Math.random()*width, y: Math.random()*height, r: Math.random()*1.5, phase: Math.random() * Math.PI * 2, speed: Math.random()*0.015 + 0.01 });
                 meteorRainTriggerNext = frameCount + 30;
             } else if (mode === 'beach') {
-                const count = reduceMotion ? 5 : 16;
+                const count = docked ? (reduceMotion ? 3 : 6) : (reduceMotion ? 5 : 16);
                 for(let i=0; i<count; i++) {
                     particles.push({
                         x: Math.random() * (width + 180) - 90,

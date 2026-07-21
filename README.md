@@ -25,22 +25,31 @@
 - 跟随 Codex Desktop 或 Codex CLI 自动显示/隐藏，也可从 Windows 系统托盘或 macOS 菜单栏手动控制。
 - 在 Codex 中直接输入 `/quota`；程序未运行时会启动，运行中则显示或隐藏悬浮窗。
 - 原生支持 Windows 10/11、Apple Silicon Mac 和 Intel Mac。
-- 支持横版、沿用完整天气背景与特效的竖版、悬浮球、置顶、缩放、拖动、中英文和减少动态效果；竖版基准布局为 `240 × 520`，首次切换默认显示为 `120 × 260`（面积为基准布局的 1/4）。
+- 支持横版、沿用完整天气背景与特效的竖版、拖到屏幕左右边缘后自动收缩的周额度贴边框、置顶、缩放、拖动、中英文和减少动态效果；贴边框继续显示当前天气背景与动态特效，并跟随自动天气切换。竖版基准布局为 `240 × 520`，首次切换默认显示为 `120 × 260`（面积为基准布局的 1/4）。
 - 支持悬浮窗内下载更新、历史版本回退和新版本启动失败自动恢复。
 - 所有数据只在本机处理，本地服务仅监听 `127.0.0.1`。
+
+## v2.5.0 更新
+
+- 新增 `128 × 52` 贴边悬浮条：保留原天气背景和动态特效，只显示周额度、状态与 `Codex`。
+- 点击 `Codex` 可按“横版 → 竖版 → 悬浮条 → 横版”切换；横版或竖版拖到屏幕边缘也会自动吸附。
+- 悬浮条圆环可切天气，滚轮或右侧纵向指示器可切背景；指示器会同步高亮当前背景。
+- 悬浮条支持沿边缘移动、向内拖出后松手还原，并修复长按持续变宽、切版后缩放失效等问题。
+- 优化紧凑视图的雨滴比例、版式动画和窗口圆角，托盘菜单新增重启入口，减号改为最小化到托盘。
 
 ## 一行安装
 
 ### Windows 10/11
 
-在 CMD 中运行（推荐，命令更短；Windows 10/11 自带 `curl.exe`）：
+在 CMD 中运行（推荐；Windows 10/11 自带 `curl.exe`）：
 
 ```cmd
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 这条命令先下载轻量的 [install.cmd](install.cmd)，再调用完整的
 [install.ps1](install.ps1)。它不会永久修改 PowerShell 执行策略。首次安装通常需要 1–3 分钟，请保持 CMD 窗口打开；安装器会显示进度、等待本地健康检查，并在成功后主动打开悬浮窗。
+命令不会隐藏下载错误：只有脚本成功保存后才会执行。这样 GitHub Raw 无法访问、连接超时或 SSL 证书异常时，CMD 会直接显示具体原因，而不是只闪出一段 CMD 版权信息后退出。
 安装 `v2.3.2` 或更高版本后只需安装一次，后续版本可直接在悬浮窗中下载；更早版本用户再运行一次该命令即可完成目录迁移。
 已经安装 `v2.3.0` 或 `v2.3.1` 的用户需要再运行一次安装命令，以修复 Windows 临时 ZIP 解压问题；此后可直接使用面板更新。
 
@@ -108,7 +117,7 @@ CodexQuotaWeather/
 ```cmd
 set HTTPS_PROXY=http://127.0.0.1:10808
 set HTTP_PROXY=http://127.0.0.1:10808
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 请把 `127.0.0.1:10808` 换成本机代理地址。关闭该 CMD 窗口后，这两个临时环境变量自动失效。
@@ -150,15 +159,22 @@ npm run setup:electron
 | 点击顶部天气名称 | 更换当前天气的背景 |
 | 点击 `中 / EN` | 切换界面语言 |
 | 点击下载图标（仅有更新时显示） | 下载更新、跳过此次更新、查看进度或选择历史版本 |
-| 点击横版的“Codex 额度”或 `−` | 切换到竖版 |
-| 点击竖版顶部的“Codex ●” | 切换到悬浮球；单击悬浮球恢复横版 |
+| 点击横版、竖版或贴边框中的 `Codex` | 按“横版 → 竖版 → 悬浮条 → 横版”切换 |
+| 将横版或竖版拖到屏幕左/右边缘 | 自动收缩为贴边框，仅显示周额度，保留天气背景与动态特效 |
+| 点击贴边框的圆环 | 与横版、竖版一致，切换到下一种天气 |
+| 在贴边框上滚动鼠标滚轮 | 切换当前天气的背景图 |
+| 点击贴边框右侧的纵向指示器 | 切换背景，并高亮当前使用的背景 |
+| 点击贴边框的 `Codex` | 切换到横版并恢复横版原有大小 |
+| 沿屏幕边缘上下拖动贴边框 | 调整贴边位置 |
+| 将贴边框向屏幕内侧拖出并松开鼠标 | 拖动时贴边条跟随鼠标，松开后恢复为吸附前的横版或竖版卡片 |
 | 点击竖版圆环 | 与横版一致，切换到下一种天气 |
 | 点击竖版底部圆点 / 滚动鼠标滚轮 | 切换当前天气的三张背景图；圆点同步显示当前背景 |
-| 拖动竖版空白处或悬浮球 | 移动当前小窗位置 |
+| 拖动竖版空白处 | 移动竖版窗口 |
 | 点击铃铛图标 | 开关窗口置顶 |
+| 点击 `−` | 最小化到系统托盘，只保留托盘图标 |
 | 点击 `×` | 隐藏面板，程序仍留在系统托盘 |
 | 左键托盘/菜单栏图标 | 显示或隐藏面板 |
-| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气或退出 |
+| 右键托盘/菜单栏图标 | 设置跟随 Codex、自动天气，或重启/退出应用 |
 | `Ctrl + 滚轮` / 拖动边缘 | 调整横版或竖版大小；两种版式分别记忆缩放比例 |
 
 “跟随 Codex”会识别 Windows 的 `Codex.exe` / `ChatGPT.exe`，以及 macOS 的
@@ -243,6 +259,8 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 
 - 首次安装需要下载约 150 MB 的 Electron，通常耗时 1–3 分钟；请等待出现“Installation finished successfully”，不要提前关闭窗口。
 - 新版安装器会立即显示开始提示，并在结束前确认本地面板已经启动。
+- 如果只看到一段新的 CMD 版权信息后立即返回，说明旧的管道命令没有下载到脚本正文；其中的 `-s` 会隐藏 `curl` 错误。请重新复制“一行安装”中的新命令，它会先保存脚本、下载成功后再执行，并直接显示网络、代理或证书错误。
+- 可单独运行 `curl -fL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o NUL` 检查 GitHub Raw 是否可访问；成功时应显示 `100`，失败时按错误提示检查网络或设置代理。
 - 如果明确显示失败，请保留窗口中的错误信息，并查看 `%LOCALAPPDATA%\Programs\CodexQuotaWeather\logs\launcher.log`。
 - 默认端口可用 `curl http://127.0.0.1:8787/health` 检查；返回 `{"ok":true,...}` 表示后台已正常运行。
 
@@ -285,7 +303,7 @@ macOS 位于 `~/Library/Application Support/CodexQuotaWeather/config.json`。修
 ```cmd
 set HTTPS_PROXY=http://127.0.0.1:10808
 set HTTP_PROXY=http://127.0.0.1:10808
-curl -Ls https://github.com/fantarunning/codex-quota-weather/raw/main/install.cmd|cmd
+curl -fL --retry 3 https://raw.githubusercontent.com/fantarunning/codex-quota-weather/main/install.cmd -o "%TEMP%\quota-weather-install.cmd" && call "%TEMP%\quota-weather-install.cmd"
 ```
 
 Windows PowerShell：
@@ -353,8 +371,8 @@ Intel macOS 上重复执行测试、平台安装器和 `npm audit`。
 发布新版本时，先同步 `package.json` 与 `package-lock.json` 的版本号，再推送同名 Tag：
 
 ```powershell
-git tag -a v2.4.0 -m "Release v2.4.0"
-git push origin v2.4.0
+git tag -a v2.5.0 -m "Release v2.5.0"
+git push origin v2.5.0
 ```
 
 `.github/workflows/release.yml` 会完成跨平台打包、校验清单生成和 GitHub Release 发布。
