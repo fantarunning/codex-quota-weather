@@ -136,6 +136,10 @@ function initialPosition(w, h) {
 
 function createWindow() {
   if (win) return win;
+  // Saved coordinates can be clamped flush to a smaller or reconfigured
+  // display during startup. Ignore those programmatic move events so they are
+  // not mistaken for a deliberate user drag to the screen edge.
+  suppressEdgeDock(1000);
   const { w, h } = outerSizeFor(scale);
   const { x, y } = initialPosition(w, h);
 
@@ -209,9 +213,12 @@ function createWindow() {
         await waitForViewMorph('mini');
         clearInterval(morphSampler);
         win.removeListener('resize', observeMorph);
+        // macOS can coalesce width and height updates from one setBounds call.
+        // Seeing either dimension between the endpoints still proves that the
+        // native window morph ran instead of jumping directly to the target.
         const sawIntermediateSize = observedMorphSizes.some(([morphWidth, morphHeight]) => (
-          morphWidth < enlargedCardSize.w && morphWidth > expectedPortraitSize.w &&
-          morphHeight < enlargedCardSize.h && morphHeight > expectedPortraitSize.h
+          (morphWidth < enlargedCardSize.w && morphWidth > expectedPortraitSize.w) ||
+          (morphHeight < enlargedCardSize.h && morphHeight > expectedPortraitSize.h)
         ));
         if (!sawIntermediateSize) {
           throw new Error(`card-to-portrait bounds did not animate through an intermediate size: ${JSON.stringify(observedMorphSizes)}`);
