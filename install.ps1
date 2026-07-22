@@ -137,7 +137,7 @@ $tempVersionDir = $null
 
 try {
   $sourcePath = Resolve-FullPath $source.Path
-  $sourcePackage = Get-Content -LiteralPath (Join-Path $sourcePath "package.json") -Raw | ConvertFrom-Json
+  $sourcePackage = Get-Content -LiteralPath (Join-Path $sourcePath "package.json") -Raw -Encoding UTF8 | ConvertFrom-Json
   $version = [string]$sourcePackage.version
   if ($version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid package version: $version" }
   $versionDir = Join-Path $versionsDir $version
@@ -200,6 +200,8 @@ try {
   Get-ChildItem -LiteralPath (Join-Path $versionDir "launcher") -Force |
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $launcherDir -Recurse -Force }
   Copy-Item -LiteralPath (Join-Path $versionDir "uninstall.ps1") -Destination (Join-Path $installRoot "uninstall.ps1") -Force
+  Copy-Item -LiteralPath (Join-Path $versionDir "uninstall.cmd") -Destination (Join-Path $installRoot "uninstall.cmd") -Force
+  Copy-Item -LiteralPath (Join-Path $versionDir "uninstall.bat") -Destination (Join-Path $installRoot "uninstall.bat") -Force
   Copy-Item -LiteralPath (Join-Path $versionDir "scripts\manage-codex-plugin.js") -Destination (Join-Path $installRoot "manage-codex-plugin.js") -Force
   New-Item -ItemType Directory -Path (Join-Path $installRoot "scripts") -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $versionDir "scripts\remove-install.ps1") -Destination (Join-Path $installRoot "scripts\remove-install.ps1") -Force
@@ -235,7 +237,9 @@ try {
 
   $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
   $shortcutPath = Join-Path $startupDir "Codex Quota Weather.lnk"
-  Remove-Item -LiteralPath (Join-Path $startupDir "Quota-Weather.lnk") -Force -ErrorAction SilentlyContinue
+  @("Quota Window.lnk", "Quota-Weather.lnk") | ForEach-Object {
+    Remove-Item -LiteralPath (Join-Path $startupDir $_) -Force -ErrorAction SilentlyContinue
+  }
   if (-not $NoStartup) {
     Write-Step "Enabling startup with Windows"
     New-Item -ItemType Directory -Path $startupDir -Force | Out-Null

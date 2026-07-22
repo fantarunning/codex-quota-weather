@@ -31,7 +31,7 @@ if command -v pgrep >/dev/null 2>&1; then
   PIDS=$(pgrep -f "$INSTALL_DIR" 2>/dev/null || true)
   if [ -n "$PIDS" ]; then
     printf '%s\n' "$PIDS" | while IFS= read -r PID; do
-      kill "$PID" 2>/dev/null || true
+      if [ "$PID" != "$$" ]; then kill "$PID" 2>/dev/null || true; fi
     done
     sleep 1
   fi

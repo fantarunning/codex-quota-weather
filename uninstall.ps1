@@ -20,7 +20,7 @@ if (
 }
 
 $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
-@("Codex Quota Weather.lnk", "Quota-Weather.lnk") | ForEach-Object {
+@("Quota Window.lnk", "Codex Quota Weather.lnk", "Quota-Weather.lnk") | ForEach-Object {
   Remove-Item -LiteralPath (Join-Path $startupDir $_) -Force -ErrorAction SilentlyContinue
 }
 
@@ -39,7 +39,12 @@ if (-not $KeepSettings) {
 $nodeExe = Join-Path $installRoot "runtime\node\node.exe"
 $pluginManager = Join-Path $installRoot "manage-codex-plugin.js"
 if ((Test-Path -LiteralPath $nodeExe) -and (Test-Path -LiteralPath $pluginManager)) {
-  & $nodeExe $pluginManager remove 2>$null | Out-Null
+  & $nodeExe $pluginManager remove | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "The Codex /quota plugin could not be removed automatically."
+  }
+} else {
+  Write-Warning "The private runtime is missing, so the Codex /quota plugin could not be removed automatically."
 }
 
 if (Test-Path -LiteralPath $installRoot) {
@@ -60,4 +65,4 @@ if (Test-Path -LiteralPath $installRoot) {
   ) -WindowStyle Hidden
 }
 
-Write-Host "Codex Quota Weather has been uninstalled." -ForegroundColor Green
+Write-Host "Codex Quota Weather has been uninstalled. Installation files are being removed in the background." -ForegroundColor Green

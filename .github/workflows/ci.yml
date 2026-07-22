@@ -32,7 +32,9 @@ jobs:
       - name: Test Windows CMD one-command installer
         if: runner.os == 'Windows'
         shell: cmd
-        run: type install.cmd | cmd
+        run: |
+          set "CODEX_QUOTA_WEATHER_SOURCE_DIR=%GITHUB_WORKSPACE%"
+          call install.cmd
       - name: Verify and remove Windows CMD installation
         if: runner.os == 'Windows'
         shell: powershell
@@ -60,10 +62,17 @@ jobs:
           }
           $marketplace = Get-Content (Join-Path $env:USERPROFILE '.agents\plugins\marketplace.json') -Raw | ConvertFrom-Json
           if ('quota-weather' -notin @($marketplace.plugins.name)) { throw '/quota marketplace entry is missing' }
-          & .\uninstall.ps1
+          & cmd.exe /d /c ('call "{0}"' -f (Join-Path $installRoot 'uninstall.cmd'))
+          if ($LASTEXITCODE -ne 0) { throw 'Windows installed uninstall.cmd failed' }
           Start-Sleep -Seconds 5
           if (Test-Path $installRoot) { throw 'Windows uninstall cleanup failed' }
           if (Test-Path $pluginRoot) { throw 'Windows plugin uninstall cleanup failed' }
+          if (Test-Path (Join-Path $env:APPDATA 'CodexQuotaWeather')) { throw 'Windows settings cleanup failed' }
+          if (Test-Path (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\Codex Quota Weather.lnk')) { throw 'Windows startup cleanup failed' }
+          if (Test-Path (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\Quota Window.lnk')) { throw 'Windows legacy startup cleanup failed' }
+          if (Select-String -LiteralPath (Join-Path $env:USERPROFILE '.codex\config.toml') -SimpleMatch '[plugins."quota-weather@personal"]' -Quiet) {
+            throw 'Windows plugin config cleanup failed'
+          }
       - name: Test macOS one-command installer
         if: runner.os == 'macOS'
         shell: bash
@@ -83,6 +92,6 @@ jobs:
           grep -F '[plugins."quota-weather@personal"]' "$CODEX_QUOTA_WEATHER_PLUGIN_HOME/.codex/config.toml"
           "$CODEX_QUOTA_WEATHER_INSTALL_DIR/runtime/node/bin/node" \
             "$CODEX_QUOTA_WEATHER_INSTALL_DIR/versions/$CURRENT/scripts/smoke-test.js"
-          bash ./uninstall-macos.sh
+          bash "$CODEX_QUOTA_WEATHER_INSTALL_DIR/uninstall-macos.sh"
           test ! -d "$CODEX_QUOTA_WEATHER_INSTALL_DIR"
           test ! -d "$CODEX_QUOTA_WEATHER_PLUGIN_HOME/plugins/quota-weather"

@@ -7,4 +7,3 @@ nodeExe = installRoot & "\runtime\node\node.exe"
 launcherJs = launcherDir & "\launcher.js"
 sh.CurrentDirectory = installRoot
 sh.Run """" & nodeExe & """ """ & launcherJs & """", 0, False
-

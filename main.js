@@ -57,7 +57,7 @@ let updateManager = null;
 let followCodex = cfg.followCodex !== false;
 let userHidden = false; // set true when the user manually hides while Codex runs
 // The title cycles landscape -> portrait -> dock -> landscape. The dock can
-// also be entered by dragging either card to the left or right display edge.
+// also be entered by dragging either card to any display edge.
 let viewMode = 'card';   // 'card' | 'mini' | 'dock'
 let cardBounds = null;   // remembered landscape bounds
 let undockedViewMode = 'card';
@@ -66,6 +66,9 @@ let dockSide = 'right';
 let suppressResizeSyncUntil = 0;
 let suppressEdgeDockUntil = 0;
 let edgeDockTimer = null;
+let edgeDockMotionStartBounds = null;
+let edgeDockLastBounds = null;
+let edgeDockLastMoveAt = 0;
 
 const MINI_BASE_W = 240; // portrait layout stays sharp at every window scale
 const MINI_BASE_H = 520;
@@ -73,6 +76,7 @@ const MINI_BASE_H = 520;
 // maps to 128x52 DIPs on the user's 150% Windows display.
 const DOCK_W = 128;
 const DOCK_H = 52;
+const DOCK_SIDES = ['left', 'right', 'top', 'bottom'];
 const DOCK_UNDOCK_THRESHOLD = 18;
 const EDGE_DOCK_THRESHOLD = 14;
 const VIEW_MORPH_MS = 300;
@@ -249,9 +253,7 @@ function createWindow() {
           throw new Error(`portrait scaling produced ${enlargedWidth}x${enlargedHeight}, expected ${enlargedPortraitSize.w}x${enlargedPortraitSize.h}`);
         }
         const portraitBeforeTitleClick = win.getContentBounds();
-        const portraitArea = screen.getDisplayMatching(portraitBeforeTitleClick).workArea;
-        const expectedTitleDockSide = portraitBeforeTitleClick.x + portraitBeforeTitleClick.width / 2 <
-          portraitArea.x + portraitArea.width / 2 ? 'left' : 'right';
+        const expectedTitleDockSide = nearestDockSide(portraitBeforeTitleClick);
         const portraitTitlePoint = await win.webContents.executeJavaScript(`(() => {
           const rect = document.querySelector('#mini .mini-top').getBoundingClientRect();
           return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
@@ -270,9 +272,10 @@ function createWindow() {
         win.webContents.sendInputEvent({ type: 'mouseUp', x: portraitTitleInputPoint.x, y: portraitTitleInputPoint.y, button: 'left', clickCount: 1 });
         await waitForViewMorph('dock');
         const [titleDockWidth, titleDockHeight] = win.getContentSize();
+        const expectedTitleDockSize = dockSizeFor(expectedTitleDockSide);
         if (viewMode !== 'dock' || dockSide !== expectedTitleDockSide ||
-            Math.abs(titleDockWidth - DOCK_W) > 1 || Math.abs(titleDockHeight - DOCK_H) > 1) {
-          throw new Error(`clicking portrait Codex did not open a compact dock on the nearest edge: ${JSON.stringify({ viewMode, dockSide, expectedTitleDockSide, titleDockWidth, titleDockHeight })}`);
+            Math.abs(titleDockWidth - expectedTitleDockSize.w) > 1 || Math.abs(titleDockHeight - expectedTitleDockSize.h) > 1) {
+          throw new Error(`clicking portrait Codex did not open an oriented dock on the nearest edge: ${JSON.stringify({ viewMode, dockSide, expectedTitleDockSide, expectedTitleDockSize, titleDockWidth, titleDockHeight })}`);
         }
         await win.webContents.executeJavaScript("document.querySelector('#edge-dock .dock-brand').click()");
         await waitForViewMorph('card');
@@ -287,12 +290,57 @@ function createWindow() {
         const workArea = screen.getDisplayMatching(beforeDock).workArea;
         const rightEdgeProbe = { ...beforeDock, x: workArea.x + workArea.width - beforeDock.width };
         const leftEdgeProbe = { ...beforeDock, x: workArea.x };
-        if (detectEdgeDockSide(rightEdgeProbe) !== 'right' || detectEdgeDockSide(leftEdgeProbe) !== 'left') {
-          throw new Error('left/right edge detection is incomplete');
+        const topEdgeProbe = { ...beforeDock, y: workArea.y };
+        const bottomEdgeProbe = { ...beforeDock, y: workArea.y + workArea.height - beforeDock.height };
+        const rightOvershootProbe = { ...rightEdgeProbe, x: rightEdgeProbe.x + 40 };
+        const leftOvershootProbe = { ...leftEdgeProbe, x: leftEdgeProbe.x - 40 };
+        const topOvershootProbe = { ...topEdgeProbe, y: topEdgeProbe.y - 40 };
+        const bottomOvershootProbe = { ...bottomEdgeProbe, y: bottomEdgeProbe.y + 40 };
+        const edgeSnapshot = (bounds, motionStartBounds) => {
+          const matchedDisplay = screen.getDisplayMatching(bounds);
+          const area = matchedDisplay.workArea;
+          return {
+            result: detectEdgeDockSide(bounds, motionStartBounds),
+            displayId: matchedDisplay.id,
+            bounds,
+            area,
+            signedGaps: {
+              left: bounds.x - area.x,
+              right: area.x + area.width - bounds.x - bounds.width,
+              top: bounds.y - area.y,
+              bottom: area.y + area.height - bounds.y - bounds.height,
+            },
+          };
+        };
+        const edgeDetectionResults = {
+          right: detectEdgeDockSide(rightEdgeProbe),
+          left: detectEdgeDockSide(leftEdgeProbe),
+          top: detectEdgeDockSide(topEdgeProbe),
+          bottom: detectEdgeDockSide(bottomEdgeProbe),
+          rightOvershoot: detectEdgeDockSide(rightOvershootProbe, beforeDock),
+          leftOvershoot: detectEdgeDockSide(leftOvershootProbe, beforeDock),
+          topOvershoot: detectEdgeDockSide(topOvershootProbe, beforeDock),
+          bottomOvershoot: detectEdgeDockSide(bottomOvershootProbe, beforeDock),
+        };
+        if (edgeDetectionResults.right !== 'right' || edgeDetectionResults.left !== 'left' ||
+            edgeDetectionResults.top !== 'top' || edgeDetectionResults.bottom !== 'bottom' ||
+            edgeDetectionResults.rightOvershoot !== 'right' || edgeDetectionResults.leftOvershoot !== 'left' ||
+            edgeDetectionResults.topOvershoot !== 'top' || edgeDetectionResults.bottomOvershoot !== 'bottom') {
+          throw new Error(`four-edge dock detection is incomplete: ${JSON.stringify({
+            edgeDetectionResults,
+            rightOvershoot: edgeSnapshot(rightOvershootProbe, beforeDock),
+            leftOvershoot: edgeSnapshot(leftOvershootProbe, beforeDock),
+            topOvershoot: edgeSnapshot(topOvershootProbe, beforeDock),
+            bottomOvershoot: edgeSnapshot(bottomOvershootProbe, beforeDock),
+          })}`);
         }
         const edgeDockReadyIn = Math.max(0, suppressEdgeDockUntil - Date.now() + 30);
         if (edgeDockReadyIn) await new Promise((resolve) => setTimeout(resolve, edgeDockReadyIn));
-        win.setPosition(rightEdgeProbe.x, rightEdgeProbe.y);
+        // Native frameless-window dragging commonly overshoots the screen edge;
+        // exercise that real-world position instead of an artificially exact fit.
+        win.setPosition(rightOvershootProbe.x - 80, rightOvershootProbe.y);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        win.setPosition(rightOvershootProbe.x, rightOvershootProbe.y);
         await waitForViewMorph('dock');
         if (viewMode !== 'dock') throw new Error('dragging to the edge did not open the dock view');
         const dockBounds = win.getBounds();
@@ -338,10 +386,11 @@ function createWindow() {
         if (viewMode !== 'dock' || heldDockSizes.length < 10 || invalidHeldDockSize) {
           throw new Error(`long-press changed the dock layout or size: ${JSON.stringify({ viewMode, heldDockSizes })}`);
         }
-        // Send a real drag sequence. The dock may follow the pointer while held,
-        // but it must not become a card until the pointer is released.
+        // Send real drag sequences across display edges. The dock stays compact
+        // while held, snaps directly to another edge on release, and restores
+        // the card only when released away from every edge.
         const pullStart = { x: workArea.x + workArea.width - 14, y: dockBounds.y + Math.round(DOCK_H / 2) };
-        const pullMove = { x: pullStart.x - 72, y: pullStart.y + 2 };
+        const pullMove = { x: Math.round(workArea.x + workArea.width / 2), y: workArea.y + 3 };
         const heldDockMoveXs = [];
         const observeHeldDockMove = () => {
           if (viewMode === 'dock') heldDockMoveXs.push(win.getBounds().x);
@@ -366,22 +415,95 @@ function createWindow() {
         const attachedDockX = workArea.x + workArea.width - heldDockBounds.width;
         const heldDockRenderer = await win.webContents.executeJavaScript(`({
           view: document.body.className,
-          detached: document.body.classList.contains('dock-detached')
+          detached: document.body.classList.contains('dock-detached'),
+          radius: getComputedStyle(document.getElementById('edge-dock')).borderTopLeftRadius
         })`);
         const distinctHeldDockXs = [...new Set(heldDockMoveXs)];
         if (Math.abs(heldDockContentSize[0] - DOCK_W) > 1 || Math.abs(heldDockContentSize[1] - DOCK_H) > 1 ||
             heldDockBounds.x >= attachedDockX - 20 || distinctHeldDockXs.length < 3 ||
-            !heldDockRenderer.view.includes('view-dock') || !heldDockRenderer.detached) {
+            !heldDockRenderer.view.includes('view-dock') || !heldDockRenderer.detached ||
+            heldDockRenderer.radius !== '10px') {
           throw new Error(`edge dock did not stay compact and smoothly follow the held drag: ${JSON.stringify({ heldDockBounds, heldDockContentSize, heldDockRenderer, heldDockMoveXs })}`);
         }
         await win.webContents.executeJavaScript(`document.getElementById('edge-dock').dispatchEvent(new PointerEvent('pointerup', {
           bubbles: true, button: 0, pointerId: 73,
           screenX: ${pullMove.x}, screenY: ${pullMove.y}
         }))`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        const topDockBounds = win.getBounds();
+        const topDockRenderer = await win.webContents.executeJavaScript(`({
+          side: document.body.dataset.dockSide,
+          direction: getComputedStyle(document.querySelector('.dock-hud-content')).flexDirection,
+          canvasWidth: document.getElementById('weather-canvas').width,
+          canvasHeight: document.getElementById('weather-canvas').height,
+          radii: [
+            getComputedStyle(document.getElementById('edge-dock')).borderTopLeftRadius,
+            getComputedStyle(document.getElementById('edge-dock')).borderTopRightRadius,
+            getComputedStyle(document.getElementById('edge-dock')).borderBottomRightRadius,
+            getComputedStyle(document.getElementById('edge-dock')).borderBottomLeftRadius
+          ]
+        })`);
+        if (viewMode !== 'dock' || dockSide !== 'top' || Math.abs(topDockBounds.y - workArea.y) > 1 ||
+            Math.abs(topDockBounds.width - DOCK_H) > 1 || Math.abs(topDockBounds.height - DOCK_W) > 1 ||
+            topDockRenderer.side !== 'top' || topDockRenderer.direction !== 'column' ||
+            topDockRenderer.canvasWidth !== DOCK_H || topDockRenderer.canvasHeight !== DOCK_W ||
+            topDockRenderer.radii.join(',') !== '0px,0px,10px,10px') {
+          throw new Error(`dragging the right dock to the top edge did not reattach it: ${JSON.stringify({ viewMode, dockSide, topDockBounds, topDockRenderer })}`);
+        }
+
+        const topPullStart = { x: topDockBounds.x + Math.round(topDockBounds.width / 2), y: workArea.y + 10 };
+        const bottomPullMove = { x: topPullStart.x + 2, y: workArea.y + workArea.height - 3 };
+        await win.webContents.executeJavaScript(`(() => {
+          const dock = document.getElementById('edge-dock');
+          dock.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, button: 0, pointerId: 74,
+            screenX: ${topPullStart.x}, screenY: ${topPullStart.y}
+          }));
+          dock.dispatchEvent(new PointerEvent('pointermove', {
+            bubbles: true, button: 0, buttons: 1, pointerId: 74,
+            screenX: ${bottomPullMove.x}, screenY: ${bottomPullMove.y}
+          }));
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        if (viewMode !== 'dock') throw new Error('top dock restored before it reached the bottom edge');
+        await win.webContents.executeJavaScript(`document.getElementById('edge-dock').dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, button: 0, pointerId: 74,
+          screenX: ${bottomPullMove.x}, screenY: ${bottomPullMove.y}
+        }))`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        const bottomDockBounds = win.getBounds();
+        if (viewMode !== 'dock' || dockSide !== 'bottom' ||
+            Math.abs(bottomDockBounds.width - DOCK_H) > 1 || Math.abs(bottomDockBounds.height - DOCK_W) > 1 ||
+            Math.abs(bottomDockBounds.y + bottomDockBounds.height - workArea.y - workArea.height) > 1) {
+          throw new Error(`dragging the top dock to the bottom edge did not reattach it: ${JSON.stringify({ viewMode, dockSide, bottomDockBounds })}`);
+        }
+
+        const bottomPullStart = {
+          x: bottomDockBounds.x + Math.round(bottomDockBounds.width / 2),
+          y: workArea.y + workArea.height - 10,
+        };
+        const restorePullMove = { x: bottomPullStart.x + 2, y: bottomPullStart.y - 72 };
+        await win.webContents.executeJavaScript(`(() => {
+          const dock = document.getElementById('edge-dock');
+          dock.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, button: 0, pointerId: 75,
+            screenX: ${bottomPullStart.x}, screenY: ${bottomPullStart.y}
+          }));
+          dock.dispatchEvent(new PointerEvent('pointermove', {
+            bubbles: true, button: 0, buttons: 1, pointerId: 75,
+            screenX: ${restorePullMove.x}, screenY: ${restorePullMove.y}
+          }));
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        if (viewMode !== 'dock') throw new Error('bottom dock restored before the mouse was released');
+        await win.webContents.executeJavaScript(`document.getElementById('edge-dock').dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, button: 0, pointerId: 75,
+          screenX: ${restorePullMove.x}, screenY: ${restorePullMove.y}
+        }))`);
         await waitForViewMorph('card');
-        if (viewMode !== 'card') throw new Error('edge dock did not restore after the mouse was released');
+        if (viewMode !== 'card') throw new Error('bottom dock did not restore after being released away from every edge');
         const draggedOutBounds = win.getBounds();
-        if (draggedOutBounds.x + draggedOutBounds.width >= workArea.x + workArea.width - 1) {
+        if (draggedOutBounds.y + draggedOutBounds.height >= workArea.y + workArea.height - 1) {
           throw new Error(`dragged-out card stayed attached to the display edge: ${JSON.stringify(draggedOutBounds)}`);
         }
 
@@ -451,8 +573,9 @@ function createWindow() {
 
   // native edge-drag resize → recompute zoom so the card scales proportionally
   win.on('resize', () => {
-    if (!win || viewMode === 'dock' || Date.now() < suppressResizeSyncUntil) return;
+    if (!win) return;
     const [cw] = win.getContentSize();
+    if (viewMode === 'dock' || Date.now() < suppressResizeSyncUntil || !resizeState) return;
     if (viewMode === 'mini') {
       portraitScale = clampPortraitScale(cw / MINI_BASE_W);
       win.webContents.setZoomFactor(portraitScale);
@@ -467,6 +590,7 @@ function createWindow() {
   });
   win.on('move', () => {
     persistWindowPosition();
+    recordEdgeDockMotion(win.getBounds());
     scheduleEdgeDock();
   });
 
@@ -504,7 +628,7 @@ function controlPanel(action) {
 // view, size, and nearby position from before it was docked.
 
 function windowSizeForView(mode) {
-  if (mode === 'dock') return { w: DOCK_W, h: DOCK_H };
+  if (mode === 'dock') return dockSizeFor(dockSide);
   if (mode === 'mini') return portraitSizeFor(portraitScale);
   return outerSizeFor(scale); // card
 }
@@ -551,15 +675,44 @@ function clampWindowBounds(bounds, workArea, margin = 0) {
   };
 }
 
+function normalizeDockSide(side) {
+  return DOCK_SIDES.includes(side) ? side : 'right';
+}
+
+function isVerticalDockSide(side) {
+  return side === 'left' || side === 'right';
+}
+
+function dockSizeFor(side) {
+  return isVerticalDockSide(normalizeDockSide(side))
+    ? { w: DOCK_W, h: DOCK_H }
+    : { w: DOCK_H, h: DOCK_W };
+}
+
 function dockBoundsFor(side, base) {
+  side = normalizeDockSide(side);
+  const size = dockSizeFor(side);
   const display = screen.getDisplayMatching(base);
   const area = display.workArea;
-  const x = side === 'left' ? area.x : area.x + area.width - DOCK_W;
-  const y = Math.min(
-    area.y + area.height - DOCK_H - 8,
-    Math.max(area.y + 8, Math.round(base.y + (base.height - DOCK_H) / 2)),
+  const centeredX = Math.min(
+    area.x + area.width - size.w - 8,
+    Math.max(area.x + 8, Math.round(base.x + (base.width - size.w) / 2)),
   );
-  return { x, y, width: DOCK_W, height: DOCK_H };
+  const centeredY = Math.min(
+    area.y + area.height - size.h - 8,
+    Math.max(area.y + 8, Math.round(base.y + (base.height - size.h) / 2)),
+  );
+  const x = side === 'left'
+    ? area.x
+    : side === 'right'
+      ? area.x + area.width - size.w
+      : centeredX;
+  const y = side === 'top'
+    ? area.y
+    : side === 'bottom'
+      ? area.y + area.height - size.h
+      : centeredY;
+  return { x, y, width: size.w, height: size.h };
 }
 
 function restoreBoundsFromDock(bounds) {
@@ -568,7 +721,9 @@ function restoreBoundsFromDock(bounds) {
   const inset = 18;
   const restored = { ...bounds };
   if (dockSide === 'left') restored.x = area.x + inset;
-  else restored.x = area.x + area.width - restored.width - inset;
+  else if (dockSide === 'right') restored.x = area.x + area.width - restored.width - inset;
+  else if (dockSide === 'top') restored.y = area.y + inset;
+  else restored.y = area.y + area.height - restored.height - inset;
   return clampWindowBounds(restored, area, 8);
 }
 
@@ -661,7 +816,7 @@ function setView(mode, options = {}) {
     undockedViewMode = previousMode === 'mini' ? 'mini' : 'card';
     undockedBounds = stablePreviousBounds;
     if (previousMode === 'card') cardBounds = stablePreviousBounds;
-    dockSide = options.side === 'left' ? 'left' : 'right';
+    dockSide = normalizeDockSide(options.side);
     viewMode = 'dock';
     const size = windowSizeForView('dock');
     resetViewConstraints();
@@ -672,8 +827,15 @@ function setView(mode, options = {}) {
       const actualDockBounds = win.getBounds();
       const dockX = dockSide === 'left'
         ? dockArea.x
-        : dockArea.x + dockArea.width - actualDockBounds.width;
-      win.setContentBounds({ x: dockX, y: dockTarget.y, width: DOCK_W, height: DOCK_H });
+        : dockSide === 'right'
+          ? dockArea.x + dockArea.width - actualDockBounds.width
+          : dockTarget.x;
+      const dockY = dockSide === 'top'
+        ? dockArea.y
+        : dockSide === 'bottom'
+          ? dockArea.y + dockArea.height - actualDockBounds.height
+          : dockTarget.y;
+      win.setContentBounds({ x: dockX, y: dockY, width: size.w, height: size.h });
     };
     // Updating Chromium zoom can synchronously rebuild the renderer for a few
     // frames. Do it before starting the bounds clock so the 300ms morph cannot
@@ -683,7 +845,7 @@ function setView(mode, options = {}) {
       edgeDelay: 1100,
       onComplete: () => {
         if (!win || viewMode !== 'dock') return;
-        finalizeViewConstraints(DOCK_W / DOCK_H, size, size, false);
+        finalizeViewConstraints(size.w / size.h, size, size, false);
         // Windows can add a one-pixel invisible outer border even on a
         // frameless transparent window. Re-align once constraints settle.
         alignDock();
@@ -707,7 +869,13 @@ function setView(mode, options = {}) {
     win.webContents.setZoomFactor(scale);
     scheduleWindowMorph(bounds, {
       onComplete: () => {
-        if (win && viewMode === 'card') finalizeViewConstraints(OUTER_W / OUTER_H, mn, mx, true);
+        if (win && viewMode === 'card') {
+          finalizeViewConstraints(OUTER_W / OUTER_H, mn, mx, true);
+          // Applying aspect/min-max constraints can add the invisible Windows
+          // frame delta once. Re-assert the content bounds so repeated dock
+          // orientation changes never grow the restored card by a few pixels.
+          win.setContentBounds(bounds);
+        }
       },
     });
     cardBounds = bounds;
@@ -736,7 +904,10 @@ function setView(mode, options = {}) {
     win.webContents.setZoomFactor(portraitScale);
     scheduleWindowMorph(bounds, {
       onComplete: () => {
-        if (win && viewMode === 'mini') finalizeViewConstraints(MINI_BASE_W / MINI_BASE_H, mn, mx, true);
+        if (win && viewMode === 'mini') {
+          finalizeViewConstraints(MINI_BASE_W / MINI_BASE_H, mn, mx, true);
+          win.setContentBounds(bounds);
+        }
       },
     });
   }
@@ -752,9 +923,7 @@ function cycleView() {
   }
   if (viewMode === 'mini') {
     const bounds = win.getContentBounds();
-    const area = screen.getDisplayMatching(bounds).workArea;
-    const centerX = bounds.x + bounds.width / 2;
-    const side = centerX < area.x + area.width / 2 ? 'left' : 'right';
+    const side = nearestDockSide(bounds);
     setView('dock', { side });
     return;
   }
@@ -766,17 +935,58 @@ function dockAtEdge(side) {
   setView('dock', { side });
 }
 
-function detectEdgeDockSide(bounds) {
+function detectEdgeDockSide(bounds, motionStartBounds = null) {
   const area = screen.getDisplayMatching(bounds).workArea;
-  const left = bounds.x <= area.x + EDGE_DOCK_THRESHOLD;
-  const right = bounds.x + bounds.width >= area.x + area.width - EDGE_DOCK_THRESHOLD;
-  if (!left && !right) return null;
-  if (left && right) {
-    const leftGap = Math.abs(bounds.x - area.x);
-    const rightGap = Math.abs(area.x + area.width - bounds.x - bounds.width);
-    return leftGap <= rightGap ? 'left' : 'right';
+  // Signed gaps stay negative after a card crosses an edge. Treat both a near
+  // approach and an overshoot as contact; using absolute gaps here makes a
+  // real native drag stop matching as soon as it passes the edge threshold.
+  const signedGaps = {
+    left: bounds.x - area.x,
+    right: area.x + area.width - bounds.x - bounds.width,
+    top: bounds.y - area.y,
+    bottom: area.y + area.height - bounds.y - bounds.height,
+  };
+  const candidates = DOCK_SIDES.filter((side) => signedGaps[side] <= EDGE_DOCK_THRESHOLD);
+  if (!candidates.length) return null;
+  if (motionStartBounds) {
+    const dx = bounds.x - motionStartBounds.x;
+    const dy = bounds.y - motionStartBounds.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) >= 2) {
+      const preferredSide = Math.abs(dx) >= Math.abs(dy)
+        ? (dx < 0 ? 'left' : 'right')
+        : (dy < 0 ? 'top' : 'bottom');
+      if (candidates.includes(preferredSide)) return preferredSide;
+    }
   }
-  return left ? 'left' : 'right';
+  return candidates.sort((a, b) => {
+    const aCrossed = signedGaps[a] <= 0;
+    const bCrossed = signedGaps[b] <= 0;
+    if (aCrossed !== bCrossed) return aCrossed ? -1 : 1;
+    return Math.abs(signedGaps[a]) - Math.abs(signedGaps[b]);
+  })[0];
+}
+
+function nearestDockSide(bounds) {
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const gaps = {
+    left: Math.abs(bounds.x - area.x),
+    right: Math.abs(area.x + area.width - bounds.x - bounds.width),
+    top: Math.abs(bounds.y - area.y),
+    bottom: Math.abs(area.y + area.height - bounds.y - bounds.height),
+  };
+  return DOCK_SIDES.slice().sort((a, b) => gaps[a] - gaps[b])[0];
+}
+
+function recordEdgeDockMotion(bounds) {
+  if (!bounds || viewMode === 'dock') return;
+  const now = Date.now();
+  if (now < suppressEdgeDockUntil) {
+    edgeDockMotionStartBounds = { ...bounds };
+  } else if (!edgeDockLastBounds || now - edgeDockLastMoveAt > 320) {
+    edgeDockMotionStartBounds = edgeDockLastBounds ? { ...edgeDockLastBounds } : { ...bounds };
+  }
+  edgeDockLastBounds = { ...bounds };
+  edgeDockLastMoveAt = now;
 }
 
 function scheduleEdgeDock() {
@@ -784,8 +994,11 @@ function scheduleEdgeDock() {
   if (!win || viewMode === 'dock' || Date.now() < suppressEdgeDockUntil) return;
   edgeDockTimer = setTimeout(() => {
     if (!win || viewMode === 'dock' || resizeState || Date.now() < suppressEdgeDockUntil) return;
-    const side = detectEdgeDockSide(win.getBounds());
-    if (side) dockAtEdge(side);
+    const side = detectEdgeDockSide(win.getBounds(), edgeDockMotionStartBounds);
+    if (side) {
+      edgeDockMotionStartBounds = null;
+      dockAtEdge(side);
+    }
   }, 180);
 }
 
@@ -1086,13 +1299,16 @@ ipcMain.on('quota:compact-drag-end', () => {
 });
 
 // The HUD stays attached to its current display edge while the user drags it
-// vertically. Keeping this in the main process lets dragging continue smoothly
-// even though the narrow BrowserWindow is moving under the pointer.
+// along that edge. Keeping this in the main process lets dragging continue
+// smoothly even though the narrow BrowserWindow is moving under the pointer.
 let dockDragTimer = null;
 let dockDragState = null;
 
 function dockInwardDistance(side, start, point) {
-  return side === 'left' ? point.x - start.x : start.x - point.x;
+  if (side === 'left') return point.x - start.x;
+  if (side === 'right') return start.x - point.x;
+  if (side === 'top') return point.y - start.y;
+  return start.y - point.y;
 }
 
 function dockRestoreBounds(point, mode, state) {
@@ -1131,23 +1347,38 @@ function validDockScreenPoint(value) {
   return { x: Math.round(Number(value.x)), y: Math.round(Number(value.y)) };
 }
 
+function snapDockToSide(side, base) {
+  if (!win || viewMode !== 'dock') return null;
+  dockSide = normalizeDockSide(side);
+  const size = dockSizeFor(dockSide);
+  const target = dockBoundsFor(dockSide, base || win.getContentBounds());
+  resetViewConstraints();
+  win.webContents.setZoomFactor(1);
+  win.setContentBounds(target);
+  finalizeViewConstraints(size.w / size.h, size, size, false);
+  win.setContentBounds(target);
+  if (win.webContents) win.webContents.send('quota:view', 'dock', { side: dockSide });
+  return target;
+}
+
 function positionDockDuringDrag(point, state, immediate = false) {
   if (!win || !state || viewMode !== 'dock') return false;
   const area = screen.getDisplayNearestPoint(point).workArea;
   const current = win.getContentBounds();
+  const size = dockSizeFor(dockSide);
   const pulledOut = dockInwardDistance(dockSide, state.start, point) >= DOCK_UNDOCK_THRESHOLD;
-  const edgeX = dockSide === 'left'
-    ? area.x
-    : area.x + area.width - DOCK_W;
   const freeX = Math.round(Math.min(
-    area.x + area.width - DOCK_W,
+    area.x + area.width - size.w,
     Math.max(area.x, point.x - state.offsetX),
   ));
-  const targetX = pulledOut ? freeX : edgeX;
-  const targetY = Math.round(Math.min(
-    area.y + area.height - DOCK_H,
+  const freeY = Math.round(Math.min(
+    area.y + area.height - size.h,
     Math.max(area.y, point.y - state.offsetY),
   ));
+  const edgeX = dockSide === 'left' ? area.x : area.x + area.width - size.w;
+  const edgeY = dockSide === 'top' ? area.y : area.y + area.height - size.h;
+  const targetX = isVerticalDockSide(dockSide) && !pulledOut ? edgeX : freeX;
+  const targetY = !isVerticalDockSide(dockSide) && !pulledOut ? edgeY : freeY;
   const blend = immediate ? 1 : (pulledOut ? 0.58 : 0.72);
   const nextX = Math.abs(targetX - current.x) <= 1
     ? targetX
@@ -1158,7 +1389,7 @@ function positionDockDuringDrag(point, state, immediate = false) {
   // Keep the compact strip physically fixed while it follows the pointer.
   // setPosition alone can preserve an in-flight layout animation's expanding
   // content bounds on Windows, making a held dock grow wider every frame.
-  win.setContentBounds({ x: nextX, y: nextY, width: DOCK_W, height: DOCK_H });
+  win.setContentBounds({ x: nextX, y: nextY, width: size.w, height: size.h });
   state.pulledOut = pulledOut;
   return pulledOut;
 }
@@ -1170,25 +1401,32 @@ ipcMain.on('quota:dock-drag-start', (_event, startPoint) => {
   // never enlarge the strip while the button remains held.
   cancelViewMorph();
   const before = win.getContentBounds();
+  const size = dockSizeFor(dockSide);
   const fixed = dockBoundsFor(dockSide, {
     ...before,
-    width: DOCK_W,
-    height: DOCK_H,
+    width: size.w,
+    height: size.h,
   });
   resetViewConstraints();
   win.webContents.setZoomFactor(1);
   win.setContentBounds(fixed);
-  finalizeViewConstraints(DOCK_W / DOCK_H, { w: DOCK_W, h: DOCK_H }, { w: DOCK_W, h: DOCK_H }, false);
+  finalizeViewConstraints(size.w / size.h, size, size, false);
   win.setContentBounds(fixed);
   const bounds = win.getContentBounds();
   const cursor = validDockScreenPoint(startPoint) || screen.getCursorScreenPoint();
+  const verticalSide = isVerticalDockSide(dockSide);
   dockDragState = {
     start: cursor,
     latestPoint: cursor,
     offsetX: cursor.x - bounds.x,
     offsetY: cursor.y - bounds.y,
-    anchorX: dockSide === 'left' ? 0.12 : 0.88,
-    anchorY: Math.min(0.85, Math.max(0.15, (cursor.y - bounds.y) / Math.max(1, bounds.height))),
+    anchorX: verticalSide
+      ? (dockSide === 'left' ? 0.12 : 0.88)
+      : Math.min(0.85, Math.max(0.15, (cursor.x - bounds.x) / Math.max(1, bounds.width))),
+    anchorY: verticalSide
+      ? Math.min(0.85, Math.max(0.15, (cursor.y - bounds.y) / Math.max(1, bounds.height)))
+      : (dockSide === 'top' ? 0.12 : 0.88),
+    originalSide: dockSide,
     restored: false,
     restoreMode: null,
     pulledOut: false,
@@ -1216,12 +1454,19 @@ ipcMain.on('quota:dock-drag-end', (_event, result) => {
   const finishedState = dockDragState;
   const finalPoint = validDockScreenPoint(result && result.point) || screen.getCursorScreenPoint();
   const cancelled = !!(result && result.cancelled);
-  const shouldRestore = !cancelled && (!!(result && result.pullOut) || !!(
+  const pulledOut = !!(result && result.pullOut) || !!(
     finishedState && !finishedState.restored &&
     dockInwardDistance(dockSide, finishedState.start, finalPoint) >= DOCK_UNDOCK_THRESHOLD
-  ));
+  );
   if (finishedState && viewMode === 'dock') positionDockDuringDrag(finalPoint, finishedState, true);
-  if (shouldRestore && finishedState && viewMode === 'dock') {
+  const releasedSide = !cancelled && pulledOut && win && viewMode === 'dock'
+    ? detectEdgeDockSide(win.getContentBounds())
+    : null;
+  if (cancelled && finishedState && viewMode === 'dock') {
+    snapDockToSide(finishedState.originalSide, win.getContentBounds());
+  } else if (releasedSide && finishedState && viewMode === 'dock') {
+    snapDockToSide(releasedSide, win.getContentBounds());
+  } else if (pulledOut && finishedState && viewMode === 'dock') {
     restoreDockFromDrag(finalPoint, finishedState);
   }
   dockDragState = null;

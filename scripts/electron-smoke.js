@@ -241,6 +241,8 @@ async function main() {
       barTop: parseFloat(getComputedStyle(document.getElementById('edge-dock'), '::after').top),
       barBottom: parseFloat(getComputedStyle(document.getElementById('edge-dock'), '::after').bottom),
       dockRadius: parseFloat(getComputedStyle(document.getElementById('edge-dock')).borderTopLeftRadius),
+      dockHasClippedOuterShadow: ['40px', '50px'].some((token) =>
+        getComputedStyle(document.getElementById('edge-dock')).boxShadow.includes(token)),
       ringOffset: parseFloat(getComputedStyle(document.getElementById('dock-ring-fg')).strokeDashoffset),
       ringColor: getComputedStyle(document.getElementById('dock-ring-fg')).stroke,
       liveDot: getComputedStyle(document.getElementById('dock-live-dot')).backgroundColor,
@@ -269,7 +271,8 @@ async function main() {
     assert(dockState.percentWeight >= 700, "edge dock ring number is not bold enough");
     assert.strictEqual(dockState.barTop, 18, "edge dock accent bar has the wrong default length");
     assert.strictEqual(dockState.barBottom, 18, "edge dock accent bar is not vertically centered");
-    assert.strictEqual(dockState.dockRadius, 10, "edge dock corner radius does not match the reference");
+    assert.strictEqual(dockState.dockRadius, 10, "attached edge dock lost its exposed rounded corners");
+    assert.strictEqual(dockState.dockHasClippedOuterShadow, false, "edge dock still has an outer shadow that leaves square corner artifacts");
     assert(dockState.ringOffset > 0 && dockState.ringOffset < 81.68, "edge dock ring did not render the live quota");
     assert.strictEqual(dockState.ringColor, dockState.barColor, "edge dock ring does not follow the weather accent");
     assert(dockState.liveDot.includes("74, 222, 128"), "edge dock live status is missing");
@@ -283,6 +286,61 @@ async function main() {
     assert.strictEqual(dockState.backgroundSwitcherDirection, "column", "edge dock background switcher is not vertical");
     assert.strictEqual(dockState.backgroundDotCount, 3, "edge dock background switcher does not expose three backgrounds");
     assert.strictEqual(dockState.activeBackgroundDot, 0, "edge dock background indicator is not synchronized");
+
+    const dockSideStyles = {};
+    for (const side of ['left', 'right', 'top', 'bottom']) {
+      const verticalStrip = side === 'top' || side === 'bottom';
+      win.setContentSize(verticalStrip ? 52 : 128, verticalStrip ? 128 : 52);
+      await win.webContents.executeJavaScript(`setView('dock', { side: '${side}' })`);
+      await wait(80);
+      dockSideStyles[side] = await win.webContents.executeJavaScript(`(() => {
+        const dockStyle = getComputedStyle(document.getElementById('edge-dock'));
+        const accentStyle = getComputedStyle(document.getElementById('edge-dock'), '::after');
+        const switcherStyle = getComputedStyle(document.getElementById('dock-bg-switcher'));
+        return {
+          appliedSide: document.body.dataset.dockSide,
+          viewport: [window.innerWidth, window.innerHeight],
+          canvas: [document.getElementById('weather-canvas').width, document.getElementById('weather-canvas').height],
+          contentDirection: getComputedStyle(document.querySelector('.dock-hud-content')).flexDirection,
+          switcherDirection: switcherStyle.flexDirection,
+          radii: [
+            dockStyle.borderTopLeftRadius,
+            dockStyle.borderTopRightRadius,
+            dockStyle.borderBottomRightRadius,
+            dockStyle.borderBottomLeftRadius
+          ],
+          accentWidth: parseFloat(accentStyle.width),
+          accentHeight: parseFloat(accentStyle.height)
+        };
+      })()`);
+      saveCapture(await win.webContents.capturePage(), `dock-${side}.png`);
+    }
+    win.setContentSize(128, 52);
+    await win.webContents.executeJavaScript("setView('dock', { side: 'right' })");
+    await wait(80);
+    assert.deepStrictEqual(dockSideStyles.left.radii, ['0px', '10px', '10px', '0px'], "left dock corners are incorrect");
+    assert.deepStrictEqual(dockSideStyles.right.radii, ['10px', '0px', '0px', '10px'], "right dock corners are incorrect");
+    assert.deepStrictEqual(dockSideStyles.top.radii, ['0px', '0px', '10px', '10px'], "top dock corners are incorrect");
+    assert.deepStrictEqual(dockSideStyles.bottom.radii, ['10px', '10px', '0px', '0px'], "bottom dock corners are incorrect");
+    for (const side of ['left', 'right', 'top', 'bottom']) {
+      assert.strictEqual(dockSideStyles[side].appliedSide, side, `${side} dock side was rejected by the renderer`);
+    }
+    assert.deepStrictEqual(dockSideStyles.left.viewport, [128, 52], "left dock window is not horizontal");
+    assert.deepStrictEqual(dockSideStyles.right.viewport, [128, 52], "right dock window is not horizontal");
+    assert.deepStrictEqual(dockSideStyles.top.viewport, [52, 128], "top dock window is not vertical");
+    assert.deepStrictEqual(dockSideStyles.bottom.viewport, [52, 128], "bottom dock window is not vertical");
+    assert.deepStrictEqual(dockSideStyles.top.canvas, [52, 128], "top dock weather canvas is not vertical");
+    assert.deepStrictEqual(dockSideStyles.bottom.canvas, [52, 128], "bottom dock weather canvas is not vertical");
+    assert.strictEqual(dockSideStyles.left.contentDirection, 'row', "left dock content should stay horizontal");
+    assert.strictEqual(dockSideStyles.right.contentDirection, 'row', "right dock content should stay horizontal");
+    assert.strictEqual(dockSideStyles.top.contentDirection, 'column', "top dock content is not vertical");
+    assert.strictEqual(dockSideStyles.bottom.contentDirection, 'column', "bottom dock content is not vertical");
+    assert.strictEqual(dockSideStyles.top.switcherDirection, 'row', "top dock background switcher is not horizontal");
+    assert.strictEqual(dockSideStyles.bottom.switcherDirection, 'row', "bottom dock background switcher is not horizontal");
+    assert(dockSideStyles.left.accentHeight > dockSideStyles.left.accentWidth, "left dock accent is not vertical");
+    assert(dockSideStyles.right.accentHeight > dockSideStyles.right.accentWidth, "right dock accent is not vertical");
+    assert(dockSideStyles.top.accentWidth > dockSideStyles.top.accentHeight, "top dock accent is not horizontal");
+    assert(dockSideStyles.bottom.accentWidth > dockSideStyles.bottom.accentHeight, "bottom dock accent is not horizontal");
 
     const dockBeforeWeather = await win.webContents.capturePage();
     saveCapture(dockBeforeWeather, "dock-before-weather.png");

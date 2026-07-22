@@ -60,13 +60,13 @@
             border: 1px solid rgba(255,255,255,0.08);
             -webkit-backdrop-filter: none;
             backdrop-filter: none;
-            box-shadow: -15px 0 40px rgba(0,0,0,0.60), inset 1px 1px 20px rgba(255,255,255,0.03), inset -10px 0 30px rgba(0,0,0,0.40);
+            box-shadow: inset 1px 1px 20px rgba(255,255,255,0.03), inset -10px 0 30px rgba(0,0,0,0.40);
             transition: background 0.4s cubic-bezier(0.2,0.8,0.2,1), border-color 0.4s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.4s cubic-bezier(0.2,0.8,0.2,1);
         }
         #edge-dock:active { cursor: grabbing; }
         #edge-dock:hover {
             background: rgba(8,18,34,0.11);
-            box-shadow: -20px 0 50px rgba(0,0,0,0.80), inset 1px 1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), 0 0 30px color-mix(in srgb, var(--dock-accent, #60a5fa) 15%, transparent);
+            box-shadow: inset 1px 1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), inset -10px 0 30px rgba(0,0,0,0.32);
         }
         #edge-dock::before {
             content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
@@ -84,9 +84,32 @@
         body.view-dock[data-dock-side="left"] #edge-dock {
             padding: 10px 10px 10px 15px; border-left: 0;
             border-right-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent);
-            box-shadow: 15px 0 40px rgba(0,0,0,0.60), inset -1px 1px 20px rgba(255,255,255,0.03), inset 10px 0 30px rgba(0,0,0,0.40);
+            box-shadow: inset -1px 1px 20px rgba(255,255,255,0.03), inset 10px 0 30px rgba(0,0,0,0.40);
         }
-        body.view-dock[data-dock-side="left"] #edge-dock:hover { border-right-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent); }
+        body.view-dock[data-dock-side="left"] #edge-dock:hover {
+            border-right-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent);
+            box-shadow: inset -1px 1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), inset 10px 0 30px rgba(0,0,0,0.32);
+        }
+        body.view-dock[data-dock-side="top"] #edge-dock,
+        body.view-dock[data-dock-side="top"] #quota-app-container { border-radius: 0 0 10px 10px; border-top: 0; }
+        body.view-dock[data-dock-side="bottom"] #edge-dock,
+        body.view-dock[data-dock-side="bottom"] #quota-app-container { border-radius: 10px 10px 0 0; border-bottom: 0; }
+        body.view-dock[data-dock-side="top"] #edge-dock {
+            border-bottom-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent);
+            box-shadow: inset 1px -1px 20px rgba(255,255,255,0.03), inset 0 10px 30px rgba(0,0,0,0.40);
+        }
+        body.view-dock[data-dock-side="top"] #edge-dock:hover {
+            border-bottom-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent);
+            box-shadow: inset 1px -1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), inset 0 10px 30px rgba(0,0,0,0.32);
+        }
+        body.view-dock[data-dock-side="bottom"] #edge-dock {
+            border-top-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 40%, transparent);
+            box-shadow: inset 1px 1px 20px rgba(255,255,255,0.03), inset 0 -10px 30px rgba(0,0,0,0.40);
+        }
+        body.view-dock[data-dock-side="bottom"] #edge-dock:hover {
+            border-top-color: color-mix(in srgb, var(--dock-accent, #60a5fa) 70%, transparent);
+            box-shadow: inset 1px 1px 20px color-mix(in srgb, var(--dock-accent, #60a5fa) 10%, transparent), inset 0 -10px 30px rgba(0,0,0,0.32);
+        }
         body.view-dock.dock-detached #edge-dock,
         body.view-dock.dock-detached #quota-app-container {
             border: 1px solid rgba(255,255,255,0.12);
@@ -96,12 +119,24 @@
             content: ''; position: absolute; top: 18px; bottom: 18px; width: 3px; z-index: 4;
             border-radius: 0 2px 2px 0; background: var(--dock-accent, #60a5fa);
             box-shadow: 0 0 8px color-mix(in srgb, var(--dock-accent, #60a5fa) 60%, transparent), 0 0 15px color-mix(in srgb, var(--dock-accent, #60a5fa) 60%, transparent); opacity: 0.9;
-            transition: top 0.3s ease, bottom 0.3s ease, background 0.3s ease;
+            transition: top 0.3s ease, bottom 0.3s ease, left 0.3s ease, right 0.3s ease, background 0.3s ease;
             animation: dockAccentBreath 2.6s ease-in-out infinite;
         }
         #edge-dock:hover::after { top: 13px; bottom: 13px; }
         body.view-dock[data-dock-side="right"] #edge-dock::after { left: 0; }
         body.view-dock[data-dock-side="left"] #edge-dock::after { right: 0; border-radius: 2px 0 0 2px; }
+        body.view-dock[data-dock-side="top"] #edge-dock::after,
+        body.view-dock[data-dock-side="bottom"] #edge-dock::after {
+            left: 18px; right: 18px; width: auto; height: 3px;
+        }
+        body.view-dock[data-dock-side="top"] #edge-dock::after {
+            top: 0; bottom: auto; border-radius: 0 0 2px 2px;
+        }
+        body.view-dock[data-dock-side="bottom"] #edge-dock::after {
+            top: auto; bottom: 0; border-radius: 2px 2px 0 0;
+        }
+        body.view-dock[data-dock-side="top"] #edge-dock:hover::after,
+        body.view-dock[data-dock-side="bottom"] #edge-dock:hover::after { left: 13px; right: 13px; }
         @keyframes dockAccentBreath {
             0%, 100% { opacity: 0.68; box-shadow: 0 0 6px var(--dock-accent, #60a5fa); }
             50% { opacity: 1; box-shadow: 0 0 12px var(--dock-accent, #60a5fa); }
@@ -166,6 +201,33 @@
         #dock-bg-switcher span.active {
             height: 10px; flex-basis: 10px; border-radius: 999px;
             background: rgba(255,255,255,0.88); box-shadow: 0 0 5px rgba(255,255,255,0.34);
+        }
+        body.view-dock[data-dock-side="top"] #edge-dock,
+        body.view-dock[data-dock-side="bottom"] #edge-dock {
+            flex-direction: column; justify-content: center; padding: 14px 5px;
+        }
+        body.view-dock[data-dock-side="top"] .dock-hud-content,
+        body.view-dock[data-dock-side="bottom"] .dock-hud-content {
+            flex-direction: column; justify-content: center; gap: 8px; margin-left: 0;
+        }
+        body.view-dock[data-dock-side="top"] .dock-brand,
+        body.view-dock[data-dock-side="bottom"] .dock-brand {
+            gap: 3px; padding-right: 0; font-size: 10px; letter-spacing: 0.15px;
+        }
+        body.view-dock[data-dock-side="top"] #dock-bg-switcher,
+        body.view-dock[data-dock-side="bottom"] #dock-bg-switcher {
+            left: 50%; right: auto; width: 34px; height: 10px; padding: 2px 4px;
+            flex-direction: row; transform: translateX(-50%);
+        }
+        body.view-dock[data-dock-side="top"] #dock-bg-switcher { top: auto; bottom: 3px; }
+        body.view-dock[data-dock-side="bottom"] #dock-bg-switcher { top: 3px; bottom: auto; }
+        body.view-dock[data-dock-side="top"] #dock-bg-switcher span,
+        body.view-dock[data-dock-side="bottom"] #dock-bg-switcher span {
+            transition: width 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+        }
+        body.view-dock[data-dock-side="top"] #dock-bg-switcher span.active,
+        body.view-dock[data-dock-side="bottom"] #dock-bg-switcher span.active {
+            width: 10px; height: 3px; flex-basis: 10px;
         }
 
         /* Window bounds morph in the main process. This short renderer reveal
@@ -619,8 +681,10 @@
         appContainer.dataset.theme = themes[currentIdx].id;
 
         function syncWeatherViewport(mode) {
+            const verticalDock = mode === 'dock' &&
+                (document.body.dataset.dockSide === 'top' || document.body.dataset.dockSide === 'bottom');
             const target = mode === 'mini' ? { width: 240, height: 520 }
-                : (mode === 'dock' ? { width: 128, height: 52 }
+                : (mode === 'dock' ? (verticalDock ? { width: 52, height: 128 } : { width: 128, height: 52 })
                     : (mode === 'card' ? { width: 680, height: 380 } : null));
             if (!target || (width === target.width && height === target.height)) return;
             width = target.width;
@@ -1031,6 +1095,12 @@
             if (dockInteractionBlocked(e)) return;
             if (SHELL && SHELL.cycleView) SHELL.cycleView();
         }
+        function dockInwardDistance(side, start, point) {
+            if (side === 'left') return point.x - start.x;
+            if (side === 'right') return start.x - point.x;
+            if (side === 'top') return point.y - start.y;
+            return start.y - point.y;
+        }
         function dockDown(e) {
             if (e.button !== 0) return;
             e.stopPropagation();
@@ -1049,11 +1119,14 @@
             const move = (ev) => {
                 if (!dockDragStartPoint) return;
                 if (Math.hypot(ev.screenX - dockDragStartPoint.x, ev.screenY - dockDragStartPoint.y) >= 3) dockDragged = true;
-                const side = document.body.dataset.dockSide === 'left' ? 'left' : 'right';
-                const horizontalDistance = side === 'left'
-                    ? ev.screenX - dockDragStartPoint.x
-                    : dockDragStartPoint.x - ev.screenX;
-                dockPullOutReady = horizontalDistance >= 18;
+                const side = ['left', 'right', 'top', 'bottom'].includes(document.body.dataset.dockSide)
+                    ? document.body.dataset.dockSide
+                    : 'right';
+                dockPullOutReady = dockInwardDistance(
+                    side,
+                    dockDragStartPoint,
+                    { x: ev.screenX, y: ev.screenY }
+                ) >= 18;
                 document.body.classList.toggle('dock-detached', dockPullOutReady);
                 if (SHELL && SHELL.dockDragMove) SHELL.dockDragMove({ x: ev.screenX, y: ev.screenY });
             };
@@ -1134,7 +1207,7 @@
             document.body.classList.remove('dock-detached');
             document.body.classList.remove('view-card', 'view-mini', 'view-dock');
             document.body.classList.add('view-' + mode);
-            if (meta && (meta.side === 'left' || meta.side === 'right')) document.body.dataset.dockSide = meta.side;
+            if (meta && ['left', 'right', 'top', 'bottom'].includes(meta.side)) document.body.dataset.dockSide = meta.side;
             syncWeatherViewport(mode);
             if (lastData) { updateCompactViews(lastData); }
             // Restart the reveal animation even when layout switches happen in

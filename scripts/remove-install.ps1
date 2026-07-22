@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "SilentlyContinue"
-Start-Sleep -Seconds 2
+Start-Sleep -Milliseconds 600
 
 $fullTarget = [IO.Path]::GetFullPath(
   [Environment]::ExpandEnvironmentVariables($Target)
@@ -17,7 +17,12 @@ if (
   $fullTarget.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase) -and
   $fullTarget -ne $allowedRoot
 ) {
-  Remove-Item -LiteralPath $fullTarget -Recurse -Force
+  for ($attempt = 0; $attempt -lt 30 -and (Test-Path -LiteralPath $fullTarget); $attempt += 1) {
+    Remove-Item -LiteralPath $fullTarget -Recurse -Force
+    if (Test-Path -LiteralPath $fullTarget) { Start-Sleep -Milliseconds 500 }
+  }
 }
 
-Remove-Item -LiteralPath $PSCommandPath -Force
+if (-not (Test-Path -LiteralPath $fullTarget)) {
+  Remove-Item -LiteralPath $PSCommandPath -Force
+}

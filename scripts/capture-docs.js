@@ -6,6 +6,7 @@ const { startDataServer } = require("../server.js");
 const ROOT = path.resolve(__dirname, "..");
 const OUTPUT = path.join(ROOT, "docs", "images");
 const FRAMES = path.join(OUTPUT, "frames");
+const USAGE_FRAMES = path.join(OUTPUT, "usage-frames");
 const PORT = 18787;
 const THEMES = ["rain", "meteor", "blossom", "snow", "beach"];
 const BACKGROUNDS = { rain: 1, meteor: 0, blossom: 0, snow: 0, beach: 0 };
@@ -49,10 +50,63 @@ async function capturePng(win, target) {
   fs.writeFileSync(target, image.toPNG());
 }
 
+async function captureStablePng(win, targets) {
+  // Chromium may return one stale frame immediately after a per-origin zoom
+  // reset. Warm the capture path once, then reuse the same stable PNG for the
+  // README frame and its standalone counterpart.
+  await win.webContents.capturePage();
+  await wait(140);
+  const image = await win.webContents.capturePage();
+  const png = image.toPNG();
+  targets.forEach((target) => fs.writeFileSync(target, png));
+}
+
+async function setLayout(win, mode, width, height, options = {}, zoom = 1) {
+  win.webContents.setZoomFactor(zoom);
+  win.setContentSize(Math.round(width * zoom), Math.round(height * zoom));
+  await win.webContents.executeJavaScript(
+    `setView(${JSON.stringify(mode)}, ${JSON.stringify(options)})`
+  );
+  await wait(700);
+}
+
+async function setTheme(win, theme, background = 0) {
+  const themeIndex = THEMES.indexOf(theme);
+  if (themeIndex < 0) throw new Error(`Unknown documentation theme: ${theme}`);
+  await win.webContents.executeJavaScript(
+    `performTransition(${themeIndex}, ${background})`
+  );
+  await wait(700);
+}
+
+async function captureUsageLayouts() {
+  fs.rmSync(USAGE_FRAMES, { recursive: true, force: true });
+  fs.mkdirSync(USAGE_FRAMES, { recursive: true });
+  const win = await createThemeWindow("rain");
+  const capture = async (name, mode, width, height, theme, background, options, zoom) => {
+    await setLayout(win, mode, width, height, options, zoom);
+    await setTheme(win, theme, background);
+    await captureStablePng(win, [
+      path.join(USAGE_FRAMES, `${name}.png`),
+      path.join(OUTPUT, `layout-${name}.png`),
+    ]);
+  };
+  try {
+    await capture("landscape", "card", 680, 380, "rain", 0, {}, 1);
+    await capture("portrait", "mini", 240, 520, "blossom", 1, {}, 2);
+    await capture("side-dock", "dock", 128, 52, "meteor", 0, { side: "right" }, 3);
+    await capture("top-dock", "dock", 52, 128, "snow", 0, { side: "top" }, 3);
+  } finally {
+    win.destroy();
+  }
+}
+
 async function main() {
   fs.mkdirSync(OUTPUT, { recursive: true });
-  fs.rmSync(FRAMES, { recursive: true, force: true });
-  fs.mkdirSync(FRAMES, { recursive: true });
+  if (process.env.QUOTA_WEATHER_DOCS_USAGE_ONLY !== "1") {
+    fs.rmSync(FRAMES, { recursive: true, force: true });
+    fs.mkdirSync(FRAMES, { recursive: true });
+  }
 
   const server = startDataServer({ port: PORT, disableLiveUsage: true });
   await new Promise((resolve, reject) => {
@@ -61,23 +115,26 @@ async function main() {
   });
 
   try {
-    for (const theme of THEMES) {
-      const win = await createThemeWindow(theme);
-      try {
-        await capturePng(win, path.join(OUTPUT, `theme-${theme}.png`));
-        const frameDir = path.join(FRAMES, theme);
-        fs.mkdirSync(frameDir, { recursive: true });
-        for (let index = 0; index < 24; index += 1) {
-          await capturePng(
-            win,
-            path.join(frameDir, `${String(index).padStart(3, "0")}.png`)
-          );
-          await wait(90);
+    if (process.env.QUOTA_WEATHER_DOCS_USAGE_ONLY !== "1") {
+      for (const theme of THEMES) {
+        const win = await createThemeWindow(theme);
+        try {
+          await capturePng(win, path.join(OUTPUT, `theme-${theme}.png`));
+          const frameDir = path.join(FRAMES, theme);
+          fs.mkdirSync(frameDir, { recursive: true });
+          for (let index = 0; index < 24; index += 1) {
+            await capturePng(
+              win,
+              path.join(frameDir, `${String(index).padStart(3, "0")}.png`)
+            );
+            await wait(90);
+          }
+        } finally {
+          win.destroy();
         }
-      } finally {
-        win.destroy();
       }
     }
+    await captureUsageLayouts();
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

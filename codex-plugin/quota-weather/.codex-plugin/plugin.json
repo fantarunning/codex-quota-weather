@@ -1,6 +1,6 @@
 {
   "name": "quota-weather",
-  "version": "0.2.0+codex.20260717091126",
+  "version": "3.0.0",
   "description": "Use /quota to start, show, or hide the local Codex Quota Weather panel on Windows and macOS.",
   "author": {
     "name": "fantarunning",
