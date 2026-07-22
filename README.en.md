@@ -67,7 +67,17 @@ After installation, restart Codex once and enter `/quota` in a new task. The sam
 | Click the bell | Keep the panel on top |
 | Right-click the tray icon | Show, hide, restart, set auto weather, or quit |
 
-![Five weather scenes](docs/images/themes-grid.png)
+<img src="docs/images/weather-showcase.gif" width="900" alt="Animated rain, meteor, blossom, snow, and beach scenes with background changes">
+
+The animation shows all five weather effects in full and cycles through all three backgrounds for every scene.
+
+### Portrait
+
+<img src="docs/images/weather-portrait.gif" width="720" alt="Animated portrait layout with all five weather scenes and background changes">
+
+### Dock
+
+<img src="docs/images/weather-dock.gif" width="720" alt="Animated horizontal and vertical dock layouts with weather and background changes">
 
 Weather changes automatically every 10 minutes by default. The tray menu can turn this off or select 1, 5, 10, or 30 minutes.
 

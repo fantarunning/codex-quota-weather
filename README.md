@@ -73,7 +73,17 @@ curl -fsSL https://raw.githubusercontent.com/fantarunning/codex-quota-weather/ma
 
 ### 五种天气
 
-![五种天气和背景](docs/images/themes-grid.png)
+<img src="docs/images/weather-showcase.gif" width="900" alt="雨景、流星、花瓣、雪景和海浪的动态天气与背景切换演示">
+
+动图依次完整展示雨景、流星、花瓣、雪景和海浪；每种天气都会展示粒子特效运动，以及 3 张背景之间的真实切换过程。
+
+#### 竖版
+
+<img src="docs/images/weather-portrait.gif" width="720" alt="竖版五种天气与背景切换演示">
+
+#### 悬浮条
+
+<img src="docs/images/weather-dock.gif" width="720" alt="左右横向与上下竖向悬浮条的天气和背景切换演示">
 
 天气默认每 10 分钟自动切换。可在托盘菜单中改成关闭、1、5、10 或 30 分钟。
 

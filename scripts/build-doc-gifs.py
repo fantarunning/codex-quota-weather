@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -6,6 +7,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 IMAGES = ROOT / "docs" / "images"
 FRAMES = IMAGES / "frames"
+PORTRAIT_FRAMES = FRAMES / "portrait"
+DOCK_FRAMES = FRAMES / "dock"
 USAGE_FRAMES = IMAGES / "usage-frames"
 THEMES = ["rain", "meteor", "blossom", "snow", "beach"]
 LABELS = {
@@ -15,6 +18,20 @@ LABELS = {
     "snow": "Silent Snow",
     "beach": "Ocean Breeze",
 }
+DOCK_SIDES = {
+    "rain": "right",
+    "meteor": "top",
+    "blossom": "left",
+    "snow": "bottom",
+    "beach": "right",
+}
+DOCK_SIDE_LABELS = {
+    "right": "Right edge",
+    "top": "Top edge",
+    "left": "Left edge",
+    "bottom": "Bottom edge",
+}
+FRAME_NAME = re.compile(r"^\d+-bg(?P<background>\d+)-(?P<phase>hold|transition)-\d+\.png$")
 
 
 def gif_frame(path: Path) -> Image.Image:
@@ -31,6 +48,222 @@ def save_gif(name: str, paths: list[Path], duration: int = 100) -> None:
         append_images=frames[1:],
         optimize=True,
         duration=duration,
+        loop=0,
+        disposal=2,
+    )
+
+
+def pick_evenly(paths: list[Path], count: int) -> list[Path]:
+    if len(paths) <= count:
+        return paths
+    if count == 1:
+        return [paths[len(paths) // 2]]
+    return [paths[round(index * (len(paths) - 1) / (count - 1))] for index in range(count)]
+
+
+def weather_showcase_canvas(source: Path, theme: str, background: int) -> Image.Image:
+    panel = Image.open(source).convert("RGBA")
+    panel.thumbnail((920, 514), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (1000, 640), "#080c14")
+    x = (canvas.width - panel.width) // 2
+    y = 22
+
+    glow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.rounded_rectangle(
+        (x - 12, y - 12, x + panel.width + 12, y + panel.height + 12),
+        radius=34,
+        fill=(76, 139, 230, 62),
+    )
+    canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(22)))
+    canvas.alpha_composite(panel, (x, y))
+
+    draw = ImageDraw.Draw(canvas)
+    title_font = documentation_font(27)
+    hint_font = documentation_font(16)
+    title = LABELS[theme]
+    hint = f"Weather {THEMES.index(theme) + 1}/5  ·  Background {background + 1}/3"
+    title_box = draw.textbbox((0, 0), title, font=title_font)
+    hint_box = draw.textbbox((0, 0), hint, font=hint_font)
+    draw.text(
+        ((canvas.width - (title_box[2] - title_box[0])) / 2, 548),
+        title,
+        font=title_font,
+        fill="#ffffff",
+    )
+    draw.text(
+        ((canvas.width - (hint_box[2] - hint_box[0])) / 2, 590),
+        hint,
+        font=hint_font,
+        fill="#93a4bd",
+    )
+
+    dot_y = 621
+    dot_gap = 22
+    start_x = canvas.width // 2 - dot_gap
+    for index in range(3):
+        color = "#7db7ff" if index == background else "#334155"
+        draw.ellipse(
+            (start_x + index * dot_gap - 4, dot_y - 4, start_x + index * dot_gap + 4, dot_y + 4),
+            fill=color,
+        )
+    return canvas.convert("RGB")
+
+
+def build_weather_showcase() -> None:
+    frames = []
+    durations = []
+    for theme in THEMES:
+        groups = {}
+        for path in sorted((FRAMES / theme).glob("*.png")):
+            match = FRAME_NAME.match(path.name)
+            if not match:
+                continue
+            key = (int(match.group("background")), match.group("phase"))
+            groups.setdefault(key, []).append(path)
+
+        sequence = [
+            (0, "hold", 2, 260),
+            (1, "transition", 3, 110),
+            (1, "hold", 2, 240),
+            (2, "transition", 3, 110),
+            (2, "hold", 2, 320),
+        ]
+        for background, phase, count, duration in sequence:
+            selected = pick_evenly(groups.get((background, phase), []), count)
+            if len(selected) != count:
+                raise RuntimeError(
+                    f"Incomplete documentation frames for {theme} bg={background} phase={phase}"
+                )
+            for path in selected:
+                frame = weather_showcase_canvas(path, theme, background)
+                frames.append(
+                    frame.quantize(
+                        colors=256,
+                        method=Image.Quantize.MEDIANCUT,
+                        dither=Image.Dither.FLOYDSTEINBERG,
+                    )
+                )
+                durations.append(duration)
+
+    frames[0].save(
+        IMAGES / "weather-showcase.gif",
+        save_all=True,
+        append_images=frames[1:],
+        optimize=True,
+        duration=durations,
+        loop=0,
+        disposal=2,
+    )
+
+
+def compact_showcase_canvas(
+    source: Path,
+    theme: str,
+    background: int,
+    mode: str,
+) -> Image.Image:
+    panel = Image.open(source).convert("RGBA")
+    if mode == "portrait":
+        max_width, max_height = 360, 550
+        mode_label = "Portrait"
+    else:
+        side = DOCK_SIDES[theme]
+        vertical = side in {"top", "bottom"}
+        max_width, max_height = (300, 540) if vertical else (650, 280)
+        mode_label = f"Dock · {DOCK_SIDE_LABELS[side]}"
+
+    scale = min(max_width / panel.width, max_height / panel.height, 1.3)
+    panel = panel.resize(
+        (max(1, round(panel.width * scale)), max(1, round(panel.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    canvas = Image.new("RGBA", (800, 720), "#080c14")
+    x = (canvas.width - panel.width) // 2
+    y = 24 + (550 - panel.height) // 2
+
+    glow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.rounded_rectangle(
+        (x - 16, y - 16, x + panel.width + 16, y + panel.height + 16),
+        radius=30,
+        fill=(76, 139, 230, 68),
+    )
+    canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(24)))
+    canvas.alpha_composite(panel, (x, y))
+
+    draw = ImageDraw.Draw(canvas)
+    title_font = documentation_font(26)
+    hint_font = documentation_font(16)
+    title = f"{mode_label} · {LABELS[theme]}"
+    hint = f"Weather {THEMES.index(theme) + 1}/5  ·  Background {background + 1}/3"
+    title_box = draw.textbbox((0, 0), title, font=title_font)
+    hint_box = draw.textbbox((0, 0), hint, font=hint_font)
+    draw.text(
+        ((canvas.width - (title_box[2] - title_box[0])) / 2, 600),
+        title,
+        font=title_font,
+        fill="#ffffff",
+    )
+    draw.text(
+        ((canvas.width - (hint_box[2] - hint_box[0])) / 2, 642),
+        hint,
+        font=hint_font,
+        fill="#93a4bd",
+    )
+    dot_y = 687
+    start_x = canvas.width // 2 - 22
+    for index in range(3):
+        color = "#7db7ff" if index == background else "#334155"
+        draw.ellipse(
+            (start_x + index * 22 - 4, dot_y - 4, start_x + index * 22 + 4, dot_y + 4),
+            fill=color,
+        )
+    return canvas.convert("RGB")
+
+
+def build_compact_showcase(mode: str) -> None:
+    root = PORTRAIT_FRAMES if mode == "portrait" else DOCK_FRAMES
+    frames = []
+    durations = []
+    for theme in THEMES:
+        groups = {}
+        for path in sorted((root / theme).glob("*.png")):
+            match = FRAME_NAME.match(path.name)
+            if not match:
+                continue
+            key = (int(match.group("background")), match.group("phase"))
+            groups.setdefault(key, []).append(path)
+
+        sequence = [
+            (0, "hold", 2, 260),
+            (1, "transition", 2, 120),
+            (1, "hold", 2, 320),
+        ]
+        for background, phase, count, duration in sequence:
+            selected = pick_evenly(groups.get((background, phase), []), count)
+            if len(selected) != count:
+                raise RuntimeError(
+                    f"Incomplete {mode} frames for {theme} bg={background} phase={phase}"
+                )
+            for path in selected:
+                frame = compact_showcase_canvas(path, theme, background, mode)
+                frames.append(
+                    frame.quantize(
+                        colors=224,
+                        method=Image.Quantize.MEDIANCUT,
+                        dither=Image.Dither.FLOYDSTEINBERG,
+                    )
+                )
+                durations.append(duration)
+
+    output = "weather-portrait.gif" if mode == "portrait" else "weather-dock.gif"
+    frames[0].save(
+        IMAGES / output,
+        save_all=True,
+        append_images=frames[1:],
+        optimize=True,
+        duration=durations,
         loop=0,
         disposal=2,
     )
@@ -128,11 +361,9 @@ def main() -> None:
         paths = sorted((FRAMES / theme).glob("*.png"))
         save_gif(f"effect-{theme}.gif", paths)
 
-    showcase = []
-    for theme in THEMES:
-        paths = sorted((FRAMES / theme).glob("*.png"))
-        showcase.extend(paths[::3][:8])
-    save_gif("weather-showcase.gif", showcase, duration=140)
+    build_weather_showcase()
+    build_compact_showcase("portrait")
+    build_compact_showcase("dock")
     build_grid()
     build_usage_demo()
     print(f"GIFs and theme grid written to {IMAGES}")

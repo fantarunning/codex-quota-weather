@@ -9,7 +9,15 @@ const FRAMES = path.join(OUTPUT, "frames");
 const USAGE_FRAMES = path.join(OUTPUT, "usage-frames");
 const PORT = 18787;
 const THEMES = ["rain", "meteor", "blossom", "snow", "beach"];
-const BACKGROUNDS = { rain: 1, meteor: 0, blossom: 0, snow: 0, beach: 0 };
+const BACKGROUNDS = { rain: 0, meteor: 0, blossom: 0, snow: 0, beach: 0 };
+const DOCK_CAPTURE_SIDES = {
+  rain: "right",
+  meteor: "top",
+  blossom: "left",
+  snow: "bottom",
+  beach: "right",
+};
+const THEME_CAPTURE_ZOOM = 1.5;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,6 +42,13 @@ async function createThemeWindow(theme) {
   });
   await win.loadURL(
     `http://127.0.0.1:${PORT}/?demo=1&lang=zh&theme=${theme}&bg=${BACKGROUNDS[theme]}`
+  );
+  // Capture the card at 1.5x device resolution so README GIF text and
+  // particles remain crisp when GitHub renders the image at desktop width.
+  win.webContents.setZoomFactor(THEME_CAPTURE_ZOOM);
+  win.setContentSize(
+    Math.round(680 * THEME_CAPTURE_ZOOM),
+    Math.round(380 * THEME_CAPTURE_ZOOM)
   );
   await win.webContents.executeJavaScript(`
     document.fonts.ready.then(() => {
@@ -79,6 +94,113 @@ async function setTheme(win, theme, background = 0) {
   await wait(700);
 }
 
+async function preloadThemeBackgrounds(win, themeIndex) {
+  await win.webContents.executeJavaScript(`(async () => {
+    await Promise.all(themes[${themeIndex}].urls.map((url) => loadBackground(url)));
+    return true;
+  })()`);
+}
+
+async function captureThemeSequence(win, theme, frameDir) {
+  const themeIndex = THEMES.indexOf(theme);
+  if (themeIndex < 0) throw new Error(`Unknown documentation theme: ${theme}`);
+
+  // Preload every background before recording. The resulting frames show the
+  // actual renderer cross-fade instead of an image-download pause.
+  await preloadThemeBackgrounds(win, themeIndex);
+  await setTheme(win, theme, 0);
+
+  let frameIndex = 0;
+  const record = async (background, phase, count, delay = 80) => {
+    for (let index = 0; index < count; index += 1) {
+      const fileName = [
+        String(frameIndex).padStart(3, "0"),
+        `bg${background}`,
+        phase,
+        `${String(index).padStart(2, "0")}.png`,
+      ].join("-");
+      await capturePng(win, path.join(frameDir, fileName));
+      frameIndex += 1;
+      await wait(delay);
+    }
+  };
+
+  // Each scene records moving particles on all three backgrounds. Background
+  // 1 and 2 include live frames from the renderer's 480 ms transition.
+  await record(0, "hold", 6, 90);
+  for (const background of [1, 2]) {
+    await win.webContents.executeJavaScript(
+      `void performTransition(${themeIndex}, ${background}); true`
+    );
+    await record(background, "transition", 8, 75);
+    await wait(120);
+    await record(background, "hold", 4, 90);
+  }
+}
+
+async function captureCompactThemeSequence(win, theme, frameDir) {
+  const themeIndex = THEMES.indexOf(theme);
+  if (themeIndex < 0) throw new Error(`Unknown documentation theme: ${theme}`);
+  await preloadThemeBackgrounds(win, themeIndex);
+  await setTheme(win, theme, 0);
+
+  let frameIndex = 0;
+  const record = async (background, phase, count, delay = 80) => {
+    for (let index = 0; index < count; index += 1) {
+      const fileName = [
+        String(frameIndex).padStart(3, "0"),
+        `bg${background}`,
+        phase,
+        `${String(index).padStart(2, "0")}.png`,
+      ].join("-");
+      await capturePng(win, path.join(frameDir, fileName));
+      frameIndex += 1;
+      await wait(delay);
+    }
+  };
+
+  await record(0, "hold", 3, 90);
+  await win.webContents.executeJavaScript(
+    `void performTransition(${themeIndex}, 1); true`
+  );
+  await record(1, "transition", 5, 75);
+  await wait(120);
+  await record(1, "hold", 2, 100);
+}
+
+async function captureCompactLayouts() {
+  const portraitRoot = path.join(FRAMES, "portrait");
+  const dockRoot = path.join(FRAMES, "dock");
+  fs.rmSync(portraitRoot, { recursive: true, force: true });
+  fs.rmSync(dockRoot, { recursive: true, force: true });
+
+  for (const theme of THEMES) {
+    const win = await createThemeWindow(theme);
+    try {
+      const portraitDir = path.join(portraitRoot, theme);
+      fs.mkdirSync(portraitDir, { recursive: true });
+      await setLayout(win, "mini", 240, 520, {}, 2);
+      await captureCompactThemeSequence(win, theme, portraitDir);
+
+      const side = DOCK_CAPTURE_SIDES[theme];
+      const vertical = side === "top" || side === "bottom";
+      const dockDir = path.join(dockRoot, theme);
+      fs.mkdirSync(dockDir, { recursive: true });
+      await setLayout(
+        win,
+        "dock",
+        vertical ? 52 : 128,
+        vertical ? 128 : 52,
+        { side },
+        4
+      );
+      await captureCompactThemeSequence(win, theme, dockDir);
+    } finally {
+      win.destroy();
+    }
+  }
+}
+
 async function captureUsageLayouts() {
   fs.rmSync(USAGE_FRAMES, { recursive: true, force: true });
   fs.mkdirSync(USAGE_FRAMES, { recursive: true });
@@ -103,8 +225,12 @@ async function captureUsageLayouts() {
 
 async function main() {
   fs.mkdirSync(OUTPUT, { recursive: true });
-  if (process.env.QUOTA_WEATHER_DOCS_USAGE_ONLY !== "1") {
+  const usageOnly = process.env.QUOTA_WEATHER_DOCS_USAGE_ONLY === "1";
+  const compactOnly = process.env.QUOTA_WEATHER_DOCS_COMPACT_ONLY === "1";
+  if (!usageOnly && !compactOnly) {
     fs.rmSync(FRAMES, { recursive: true, force: true });
+    fs.mkdirSync(FRAMES, { recursive: true });
+  } else {
     fs.mkdirSync(FRAMES, { recursive: true });
   }
 
@@ -115,26 +241,21 @@ async function main() {
   });
 
   try {
-    if (process.env.QUOTA_WEATHER_DOCS_USAGE_ONLY !== "1") {
+    if (!usageOnly && !compactOnly) {
       for (const theme of THEMES) {
         const win = await createThemeWindow(theme);
         try {
           await capturePng(win, path.join(OUTPUT, `theme-${theme}.png`));
           const frameDir = path.join(FRAMES, theme);
           fs.mkdirSync(frameDir, { recursive: true });
-          for (let index = 0; index < 24; index += 1) {
-            await capturePng(
-              win,
-              path.join(frameDir, `${String(index).padStart(3, "0")}.png`)
-            );
-            await wait(90);
-          }
+          await captureThemeSequence(win, theme, frameDir);
         } finally {
           win.destroy();
         }
       }
     }
-    await captureUsageLayouts();
+    if (!usageOnly) await captureCompactLayouts();
+    if (!compactOnly) await captureUsageLayouts();
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
