@@ -26,7 +26,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { fetchLiveUsage } = require("./liveUsage.js");
+const { fetchLiveUsage, readAccountPlanType } = require("./liveUsage.js");
 const { loadConfig } = require("./settings.js");
 
 const APP_DIR = __dirname;
@@ -409,6 +409,28 @@ function aggregateToday(CONFIG, opts = {}) {
         source: "session",
         stale: false,
       };
+    }
+  }
+
+  // Last resort for a brand-new install: no live snapshot and no session yet
+  // carries rate_limits, so the 套餐 card would read "未知套餐". The signed-in
+  // plan is available offline in auth.json's id_token, so surface at least the
+  // plan type (quota windows stay empty until the first live/ session data).
+  if (!plan || !plan.planType) {
+    const accountPlan = readAccountPlanType(opts.codexHome || CODEX_HOME);
+    if (accountPlan) {
+      plan = plan
+        ? { ...plan, planType: plan.planType || accountPlan }
+        : {
+            planType: accountPlan,
+            limitId: null,
+            primary: null,
+            secondary: null,
+            credits: null,
+            snapshotAt: null,
+            source: "account",
+            stale: false,
+          };
     }
   }
 

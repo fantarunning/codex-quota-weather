@@ -36,6 +36,45 @@ function readAuth() {
   }
 }
 
+// Decode a JWT payload without verifying the signature. We only read a
+// self-reported claim for display, never for an authz decision, so an unsigned
+// base64url decode is sufficient and dependency-free.
+function decodeJwtPayload(jwt) {
+  if (typeof jwt !== "string") return null;
+  const parts = jwt.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const json = Buffer.from(parts[1], "base64url").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+// The signed-in ChatGPT plan (plus/pro/team/free) is carried inside the
+// id_token JWT that Codex stores in auth.json, so it is available offline the
+// instant a user logs in — BEFORE any /wham/usage call or Codex session with
+// rate_limits exists. server.js uses this as the last-resort plan source so a
+// brand-new install shows the correct 套餐 instead of "未知套餐".
+function readAccountPlanType(codexHome = CODEX_HOME) {
+  let auth;
+  try {
+    auth = JSON.parse(fs.readFileSync(path.join(codexHome, "auth.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const tokens = auth.tokens || {};
+  const claims = decodeJwtPayload(tokens.id_token) || {};
+  const authClaims = claims["https://api.openai.com/auth"] || {};
+  const raw =
+    authClaims.chatgpt_plan_type ||
+    claims.chatgpt_plan_type ||
+    authClaims.plan_type ||
+    null;
+  if (!raw || typeof raw !== "string") return null;
+  return raw.trim().toLowerCase() || null;
+}
+
 function readProxy() {
   // prefer explicit env, then .codex/.env
   const envProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
@@ -228,7 +267,7 @@ async function fetchLiveUsage(timeoutMs = 8000) {
   }
 }
 
-module.exports = { fetchLiveUsage, normalizeLive };
+module.exports = { fetchLiveUsage, normalizeLive, readAccountPlanType };
 
 // standalone probe
 if (require.main === module) {

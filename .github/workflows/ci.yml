@@ -28,6 +28,7 @@ jobs:
       - run: npm test
       - run: npm run test:electron
       - run: npm run test:app
+      - run: npm run test:release
       - run: npm audit --audit-level=high
       - name: Test Windows CMD one-command installer
         if: runner.os == 'Windows'

@@ -8,7 +8,7 @@ const { electronExecutable, settingsDataDir } = require("../platform.js");
 const ROOT = path.resolve(__dirname, "..");
 process.env.QUOTA_WEATHER_DATA_DIR = path.join(ROOT, ".tmp", "test-settings");
 
-const { fetchLiveUsage, normalizeLive } = require("../liveUsage.js");
+const { fetchLiveUsage, normalizeLive, readAccountPlanType } = require("../liveUsage.js");
 const { aggregateToday, startDataServer } = require("../server.js");
 const { defaultConfig } = require("../settings.js");
 
@@ -63,6 +63,32 @@ async function main() {
   assert.strictEqual(defaults.windowX, 1213);
   assert.strictEqual(defaults.windowY, 647);
   assert.strictEqual(defaults.skippedUpdateVersion, null);
+
+  // A brand-new install has no live snapshot and no session with rate_limits,
+  // so the plan type must still resolve offline from auth.json's id_token so
+  // the 套餐 card never falls back to "未知套餐" for a signed-in user.
+  assert.strictEqual(typeof readAccountPlanType, "function");
+  const accountPlanHome = path.join(ROOT, ".tmp", "account-plan-home");
+  fs.rmSync(accountPlanHome, { recursive: true, force: true });
+  fs.mkdirSync(accountPlanHome, { recursive: true });
+  assert.strictEqual(
+    readAccountPlanType(accountPlanHome),
+    null,
+    "missing auth.json must yield no plan type"
+  );
+  const b64url = (obj) => Buffer.from(JSON.stringify(obj), "utf8").toString("base64url");
+  const idToken = ["e30", b64url({ "https://api.openai.com/auth": { chatgpt_plan_type: "Pro" } }), "sig"].join(".");
+  fs.writeFileSync(
+    path.join(accountPlanHome, "auth.json"),
+    JSON.stringify({ tokens: { id_token: idToken } }),
+    "utf8"
+  );
+  assert.strictEqual(
+    readAccountPlanType(accountPlanHome),
+    "pro",
+    "signed-in plan type must be decoded offline from the id_token"
+  );
+  fs.rmSync(accountPlanHome, { recursive: true, force: true });
 
   for (const file of [
     "main.js",
@@ -245,10 +271,19 @@ async function main() {
   );
   assert(!fs.readFileSync(pluginTestConfig, "utf8").includes('[plugins."quota-weather@personal"]'));
   fs.rmSync(pluginTestHome, { recursive: true, force: true });
-  const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
-  assert(ciWorkflow.includes("Directory With Spaces/CodexQuotaWeather-CI"), "macOS CI install path must exercise spaces");
-  assert(ciWorkflow.includes('uninstall.cmd'), "Windows CI does not exercise the installed CMD uninstaller");
-  assert(ciWorkflow.includes('$CODEX_QUOTA_WEATHER_INSTALL_DIR/uninstall-macos.sh'), "macOS CI does not exercise the installed uninstaller");
+  // `.github` and `docs` are developer-only trees that package-release.js
+  // deliberately strips from the shipped ZIP. update-manager.js runs THIS smoke
+  // test against the extracted release to verify an update, so reading those
+  // trees unconditionally makes every in-app update fail with ENOENT. Only
+  // assert on them when running from a full source checkout (CI, local dev).
+  const isSourceCheckout = fs.existsSync(path.join(ROOT, ".github", "workflows", "ci.yml"));
+  if (isSourceCheckout) {
+    const ciWorkflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+    assert(ciWorkflow.includes("Directory With Spaces/CodexQuotaWeather-CI"), "macOS CI install path must exercise spaces");
+    assert(ciWorkflow.includes('uninstall.cmd'), "Windows CI does not exercise the installed CMD uninstaller");
+    assert(ciWorkflow.includes('$CODEX_QUOTA_WEATHER_INSTALL_DIR/uninstall-macos.sh'), "macOS CI does not exercise the installed uninstaller");
+    assert(ciWorkflow.includes("test:release"), "CI does not exercise the packaged release archive smoke test");
+  }
   const installPowerShell = fs.readFileSync(path.join(ROOT, "install.ps1"), "utf8");
   const uninstallPowerShell = fs.readFileSync(path.join(ROOT, "uninstall.ps1"), "utf8");
   const uninstallMac = fs.readFileSync(path.join(ROOT, "uninstall-macos.sh"), "utf8");
@@ -259,9 +294,13 @@ async function main() {
   assert(uninstallMac.includes('[ "$PID" != "$$" ]'), "macOS installed uninstaller can terminate its own shell");
   const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
   assert(readme.includes("# Codex Quota Weather"), "README does not use the current project name");
-  assert(readme.includes("docs/images/usage-demo.gif"), "README does not show the current usage demo");
   assert(readme.includes('"%LOCALAPPDATA%\\Programs\\CodexQuotaWeather\\uninstall.cmd"'), "README is missing the short Windows uninstall command");
-  assert(fs.existsSync(path.join(ROOT, "docs", "images", "usage-demo.gif")), "usage demo has not been generated");
+  // docs/ (and the generated demo GIF) is a developer-only tree excluded from
+  // the release ZIP, so only assert on it from a full source checkout.
+  if (isSourceCheckout) {
+    assert(readme.includes("docs/images/usage-demo.gif"), "README does not show the current usage demo");
+    assert(fs.existsSync(path.join(ROOT, "docs", "images", "usage-demo.gif")), "usage demo has not been generated");
+  }
 
   const fixtureRoot = path.join(ROOT, ".tmp", "cross-midnight-sessions");
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
