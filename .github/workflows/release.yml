@@ -34,6 +34,7 @@ jobs:
           test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
       - run: npm ci
       - run: npm test
+      - run: npm run test:release
       - run: npm run test:electron
       - run: npm run test:app
       - run: npm audit --audit-level=high
