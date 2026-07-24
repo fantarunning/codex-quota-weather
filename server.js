@@ -26,7 +26,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { fetchLiveUsage, readAccountPlanType } = require("./liveUsage.js");
+const { fetchLiveUsage, readAccountPlanType, readAccountId } = require("./liveUsage.js");
 const { loadConfig } = require("./settings.js");
 
 const APP_DIR = __dirname;
@@ -37,24 +37,45 @@ const SESSIONS_DIR = path.join(CODEX_HOME, "sessions");
 // A background poller hits ChatGPT's /wham/usage endpoint directly, so the plan
 // quota refreshes even when you're not actively chatting in Codex. aggregateToday
 // prefers this live snapshot; the session-file rate_limits are the fallback.
-let liveCache = { plan: null, at: 0, ok: false };
+// accountId tags the cache with the auth.json account it was fetched for, so a
+// Codex account switch drops the previous account's plan instead of showing it.
+let liveCache = { plan: null, at: 0, ok: false, accountId: null };
 let liveInFlight = null; // dedupe concurrent fetches (poller + manual refresh)
+
+// Drop any cached live plan when the signed-in Codex account no longer matches
+// the account the cache was built for. Called on every /quota so a mid-session
+// account switch can't keep serving the old account's quota.
+function invalidateCacheOnAccountSwitch(codexHome = CODEX_HOME) {
+  const current = readAccountId(codexHome);
+  if (current === liveCache.accountId) return false;
+  liveCache = { plan: null, at: 0, ok: false, accountId: current };
+  return true;
+}
 
 // Fetch the live quota once and update liveCache. Returns the fetch result.
 // Concurrent callers share one in-flight request.
 async function refreshLiveNow() {
   if (liveInFlight) return liveInFlight;
   liveInFlight = (async () => {
+    const accountId = readAccountId();
     try {
       const r = await fetchLiveUsage();
       if (r && r.ok && r.plan) {
-        liveCache = { plan: r.plan, at: Date.now(), ok: true };
+        liveCache = { plan: r.plan, at: Date.now(), ok: true, accountId };
+      } else if (accountId !== liveCache.accountId) {
+        // The account changed under us; never keep the previous plan as "last
+        // good" data for a different account.
+        liveCache = { plan: null, at: 0, ok: false, accountId };
       } else {
-        liveCache.ok = false; // keep the last good plan, just mark not-fresh
+        liveCache.ok = false; // same account, transient failure: keep last good
       }
       return r;
     } catch (e) {
-      liveCache.ok = false;
+      if (accountId !== liveCache.accountId) {
+        liveCache = { plan: null, at: 0, ok: false, accountId };
+      } else {
+        liveCache.ok = false;
+      }
       return { ok: false, error: String(e) };
     } finally {
       liveInFlight = null;
@@ -345,6 +366,15 @@ function findFreshestRateLimits(sessionsDir = SESSIONS_DIR) {
 function aggregateToday(CONFIG, opts = {}) {
   const now = opts.now ? new Date(opts.now) : new Date();
   const todayKey = localDayKey(now);
+  // A Codex account switch rewrites auth.json's account_id. Drop the previous
+  // account's cached plan immediately (the /quota poll runs every few seconds,
+  // long before the 60s live poller would notice) and kick off a fresh fetch so
+  // the new account's 套餐 and weekly quota replace the stale ones right away.
+  if (!opts.files && !opts.sessionsDir) {
+    if (invalidateCacheOnAccountSwitch(opts.codexHome || CODEX_HOME)) {
+      Promise.resolve().then(() => refreshLiveNow()).catch(() => {});
+    }
+  }
   const files = opts.files || recentlyActiveSessionFiles(now, opts.sessionsDir || SESSIONS_DIR);
   const sessions = files
     .map(parseSessionFile)

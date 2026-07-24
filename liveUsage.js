@@ -36,6 +36,18 @@ function readAuth() {
   }
 }
 
+// The signed-in account id (auth.json tokens.account_id). server.js stamps its
+// live-quota cache with this so switching Codex accounts immediately drops the
+// previous account's cached plan instead of showing its stale quota.
+function readAccountId(codexHome = CODEX_HOME) {
+  try {
+    const auth = JSON.parse(fs.readFileSync(path.join(codexHome, "auth.json"), "utf8"));
+    return (auth.tokens && auth.tokens.account_id) || null;
+  } catch {
+    return null;
+  }
+}
+
 // Decode a JWT payload without verifying the signature. We only read a
 // self-reported claim for display, never for an authz decision, so an unsigned
 // base64url decode is sufficient and dependency-free.
@@ -267,7 +279,7 @@ async function fetchLiveUsage(timeoutMs = 8000) {
   }
 }
 
-module.exports = { fetchLiveUsage, normalizeLive, readAccountPlanType };
+module.exports = { fetchLiveUsage, normalizeLive, readAccountPlanType, readAccountId };
 
 // standalone probe
 if (require.main === module) {

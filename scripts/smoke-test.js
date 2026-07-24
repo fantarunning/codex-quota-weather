@@ -8,7 +8,7 @@ const { electronExecutable, settingsDataDir } = require("../platform.js");
 const ROOT = path.resolve(__dirname, "..");
 process.env.QUOTA_WEATHER_DATA_DIR = path.join(ROOT, ".tmp", "test-settings");
 
-const { fetchLiveUsage, normalizeLive, readAccountPlanType } = require("../liveUsage.js");
+const { fetchLiveUsage, normalizeLive, readAccountPlanType, readAccountId } = require("../liveUsage.js");
 const { aggregateToday, startDataServer } = require("../server.js");
 const { defaultConfig } = require("../settings.js");
 
@@ -88,6 +88,24 @@ async function main() {
     "pro",
     "signed-in plan type must be decoded offline from the id_token"
   );
+
+  // Switching Codex accounts rewrites auth.json's account_id. readAccountId
+  // must report the current account so the server can drop the previous
+  // account's cached plan/quota instead of showing stale data.
+  assert.strictEqual(typeof readAccountId, "function");
+  assert.strictEqual(readAccountId(accountPlanHome), null, "no auth.json yields no account id");
+  fs.writeFileSync(
+    path.join(accountPlanHome, "auth.json"),
+    JSON.stringify({ tokens: { account_id: "acct-A", id_token: idToken } }),
+    "utf8"
+  );
+  assert.strictEqual(readAccountId(accountPlanHome), "acct-A", "must read the signed-in account id");
+  fs.writeFileSync(
+    path.join(accountPlanHome, "auth.json"),
+    JSON.stringify({ tokens: { account_id: "acct-B", id_token: idToken } }),
+    "utf8"
+  );
+  assert.strictEqual(readAccountId(accountPlanHome), "acct-B", "must reflect the switched account id");
   fs.rmSync(accountPlanHome, { recursive: true, force: true });
 
   for (const file of [
